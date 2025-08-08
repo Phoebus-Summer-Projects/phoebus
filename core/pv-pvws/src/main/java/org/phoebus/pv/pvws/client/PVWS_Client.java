@@ -27,11 +27,11 @@ public class PVWS_Client extends WebSocketClient {
         private final CountDownLatch latch;
         /*
         private SubscriptionHandler subHandler;
+        private MetadataHandler metadataHandler;
+         */
+
         private HeartbeatHandler heartbeatHandler;
         private ReconnectHandler reconnectHandler;
-        private MetadataHandler metadataHandler;
-
-         */
 
         public PVWS_Client(URI serverUri, CountDownLatch latch, ObjectMapper mapper) {
             super(serverUri);
@@ -183,14 +183,6 @@ public class PVWS_Client extends WebSocketClient {
             this.subHandler = subHandler;
         }
 
-        public void setHeartbeatHandler(HeartbeatHandler heartbeatHandler) {
-            this.heartbeatHandler = heartbeatHandler;
-        }
-
-        public void setReconnectHandler(ReconnectHandler reconnectHandler) {
-            this.reconnectHandler = reconnectHandler;
-        }
-
         public void setMetadataHandler(MetadataHandler metadataHandler) {
             this.metadataHandler = metadataHandler;
         }
@@ -203,10 +195,19 @@ public class PVWS_Client extends WebSocketClient {
             subHandler.unSubscribe(pvs);
         }
 
+         */
+
         public void attemptReconnect() {
             this.reconnectHandler.attemptReconnect();
         }
-        */
+
+        public void setHeartbeatHandler(HeartbeatHandler heartbeatHandler) {
+        this.heartbeatHandler = heartbeatHandler;
+        }
+
+        public void setReconnectHandler(ReconnectHandler reconnectHandler) {
+        this.reconnectHandler = reconnectHandler;
+        }
 
 
         /* TODO: NEEDS HEARTBEAT HANDLER AND IDEALLY REFACTOR THESE 2 INTO THE HEARTBEAT CLASS
