@@ -150,24 +150,20 @@ public class PVWS_Client extends WebSocketClient {
         @Override
         public void onClose(int code, String reason, boolean remote) {
             System.out.println("❌ Disconnected. Reason: " + reason);
-            /* TODO: HEARTBEAT AND RECONN HANDLER
+            // TODO: HEARTBEAT AND RECONN HANDLER
+            // Can this be added in or is there more code to add?
              heartbeatHandler.stop();
-
             attemptReconnect();
-
-             */
             latch.countDown();
         }
 
         @Override
         public void onError(Exception ex) {
             System.err.println("🚨 WebSocket Error: " + ex.getMessage());
-            /* TODO: HEARTBEAT AND RECONN HANDLER
+            // TODO: HEARTBEAT AND RECONN HANDLER
             heartbeatHandler.stop();
             attemptReconnect();
-
-             */
-            //this.close();
+            this.close();
         }
 
 
@@ -210,7 +206,7 @@ public class PVWS_Client extends WebSocketClient {
         }
 
 
-        /* TODO: NEEDS HEARTBEAT HANDLER AND IDEALLY REFACTOR THESE 2 INTO THE HEARTBEAT CLASS
+        // TODO: NEEDS HEARTBEAT HANDLER AND IDEALLY REFACTOR THESE 2 INTO THE HEARTBEAT CLASS
         @Override
         public void onWebsocketPing(WebSocket conn, Framedata f) {
             System.out.println("Received Ping frame");
@@ -225,7 +221,7 @@ public class PVWS_Client extends WebSocketClient {
            heartbeatHandler.setLastPongTime(System.currentTimeMillis());
         }
 
-         */
+
 
 
     }
