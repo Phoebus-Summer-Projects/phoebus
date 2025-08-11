@@ -27,11 +27,11 @@ public class PVWS_Client extends WebSocketClient {
         private final CountDownLatch latch;
         /*
         private SubscriptionHandler subHandler;
+        private MetadataHandler metadataHandler;
+         */
+
         private HeartbeatHandler heartbeatHandler;
         private ReconnectHandler reconnectHandler;
-        private MetadataHandler metadataHandler;
-
-         */
 
         public PVWS_Client(URI serverUri, CountDownLatch latch, ObjectMapper mapper) {
             super(serverUri);
@@ -44,8 +44,8 @@ public class PVWS_Client extends WebSocketClient {
             try {
                 System.out.println("Connected to server");
                 latch.countDown();
-                //reconnectHandler.resetStatus();
-                //heartbeatHandler.start();
+                reconnectHandler.resetStatus();
+                heartbeatHandler.start();
             } catch (Exception e) {
                 System.err.println("Exception in onOpen: " + e.getMessage());
                 e.printStackTrace();
@@ -150,24 +150,19 @@ public class PVWS_Client extends WebSocketClient {
         @Override
         public void onClose(int code, String reason, boolean remote) {
             System.out.println("❌ Disconnected. Reason: " + reason);
-            /* TODO: HEARTBEAT AND RECONN HANDLER
+            // TODO: HEARTBEAT AND RECONN HANDLER
              heartbeatHandler.stop();
-
             attemptReconnect();
-
-             */
             latch.countDown();
         }
 
         @Override
         public void onError(Exception ex) {
             System.err.println("🚨 WebSocket Error: " + ex.getMessage());
-            /* TODO: HEARTBEAT AND RECONN HANDLER
+            //TODO: HEARTBEAT AND RECONN HANDLER
             heartbeatHandler.stop();
             attemptReconnect();
-
-             */
-            //this.close();
+            this.close();
         }
 
 
@@ -183,14 +178,6 @@ public class PVWS_Client extends WebSocketClient {
             this.subHandler = subHandler;
         }
 
-        public void setHeartbeatHandler(HeartbeatHandler heartbeatHandler) {
-            this.heartbeatHandler = heartbeatHandler;
-        }
-
-        public void setReconnectHandler(ReconnectHandler reconnectHandler) {
-            this.reconnectHandler = reconnectHandler;
-        }
-
         public void setMetadataHandler(MetadataHandler metadataHandler) {
             this.metadataHandler = metadataHandler;
         }
@@ -202,14 +189,22 @@ public class PVWS_Client extends WebSocketClient {
         public void unSubscribeClient(String[] pvs) throws JsonProcessingException {
             subHandler.unSubscribe(pvs);
         }
+        */
 
         public void attemptReconnect() {
             this.reconnectHandler.attemptReconnect();
         }
-        */
+
+        public void setReconnectHandler(ReconnectHandler reconnectHandler) {
+            this.reconnectHandler = reconnectHandler;
+        }
+
+        public void setHeartbeatHandler(HeartbeatHandler heartbeatHandler) {
+            this.heartbeatHandler = heartbeatHandler;
+        }
 
 
-        /* TODO: NEEDS HEARTBEAT HANDLER AND IDEALLY REFACTOR THESE 2 INTO THE HEARTBEAT CLASS
+        //TODO: NEEDS HEARTBEAT HANDLER AND IDEALLY REFACTOR THESE 2 INTO THE HEARTBEAT CLASS
         @Override
         public void onWebsocketPing(WebSocket conn, Framedata f) {
             System.out.println("Received Ping frame");
@@ -223,10 +218,6 @@ public class PVWS_Client extends WebSocketClient {
 
            heartbeatHandler.setLastPongTime(System.currentTimeMillis());
         }
-
-         */
-
-
     }
 
 
