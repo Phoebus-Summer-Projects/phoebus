@@ -32,13 +32,15 @@ public class PVWS_Client extends WebSocketClient {
         private HeartbeatHandler heartbeatHandler;
         private ReconnectHandler reconnectHandler;
         private MetadataHandler metadataHandler;
-
          */
+        private volatile boolean dropped = false; // detects disconnects
 
         public PVWS_Client(URI serverUri, CountDownLatch latch, ObjectMapper mapper) {
             super(serverUri);
             this.latch = latch;
             this.mapper = mapper;
+            // Java-WebSocket detect dead connections & fires onClose/onError is no pong is received
+            setConnectionLostTimeout(20); // 20 seconds
         }
 
         @Override
@@ -150,7 +152,12 @@ public class PVWS_Client extends WebSocketClient {
 
         @Override
         public void onClose(int code, String reason, boolean remote) {
-            console.log(Level.WARNING, "Disconnected. Reason: " + reason);
+            // Mark as dropped for anything that's not a normal, local close
+            // 1000 = normal closure. If remote==true or code!=1000 treat as drop.
+            if (remote || code != 1000) {
+                dropped = true;
+            }
+            console.log(Level.WARNING, "Disconnected. code=" + code + " remote=" + remote + " reason=" + reason);
             /* TODO: HEARTBEAT AND RECONN HANDLER
              heartbeatHandler.stop();
 
@@ -162,14 +169,20 @@ public class PVWS_Client extends WebSocketClient {
 
         @Override
         public void onError(Exception ex) {
-            console.log(Level.SEVERE,"WebSocket Error: " + ex.getMessage());
+            dropped = true;
+            console.log(Level.SEVERE, "WebSocket Error: " + ex.getMessage());
+        }
+        //allow callers to check if the last close was a drop
+        public boolean wasDropped() {
+            return dropped;
+        }
             /* TODO: HEARTBEAT AND RECONN HANDLER
             heartbeatHandler.stop();
             attemptReconnect();
 
              */
             //this.close();
-        }
+
 
 
         public void closeClient() {
