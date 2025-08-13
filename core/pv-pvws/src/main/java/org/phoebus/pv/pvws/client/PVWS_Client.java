@@ -10,6 +10,7 @@ import org.java_websocket.framing.Framedata;
 import org.java_websocket.handshake.ServerHandshake;
 import org.phoebus.pv.PV;
 import org.phoebus.pv.PVPool;
+import org.phoebus.pv.RefCountMap;
 import org.phoebus.pv.pvws.PVWS_PV;
 import org.phoebus.pv.pvws.models.pv.PvwsData;
 import org.phoebus.pv.pvws.models.pv.PvwsMetadata;
@@ -19,10 +20,7 @@ import org.phoebus.pv.pvws.utils.pv.toVType;
 
 import java.io.IOException;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.logging.Logger;
 import java.util.logging.Level;
@@ -66,6 +64,7 @@ public class PVWS_Client extends WebSocketClient {
         @Override
         public void onMessage(String message) {
 
+            System.out.println("MESSAGE AQUIRED 💪💪💪💪💪💪💪💪💪: " + message);
 
             console.log(Level.INFO, "Received: " + message);
 
@@ -112,7 +111,15 @@ public class PVWS_Client extends WebSocketClient {
 
                         mergeMetadata(pvObj);
 
-                        if(pvObj.getVtype() == null)
+
+                        //String vtypeattr = node.get("vtype").asText();
+                        // needs to check node.get("b64dbl") , "b64flt" ETC
+                         if(node.get("value") == null
+                            && node.get("b64flt") == null
+                            && node.get("b64dbl") == null
+                            && node.get("b64srt") == null
+                            && node.get("b64byt") == null
+                         )
                         {
 
 
@@ -131,6 +138,7 @@ public class PVWS_Client extends WebSocketClient {
                             msgsub.setPvs(pvsub);
                             String jsonsub = this.mapper.writeValueAsString(msgsub);
                             this.send(jsonsub);
+                            //Thread.sleep(500);
 
                             return;
 
@@ -149,6 +157,24 @@ public class PVWS_Client extends WebSocketClient {
                         updatedPV.update(vVal);
                         PVPool.releasePV(updatedPV);
 
+                        System.out.println("pvws references 🔥🔥🔥🔥🔥🔥🔥: " + PVPool.getPVReferences());
+
+                        if(containsPv(updatedPV))
+                        {
+                            System.out.println("🐛🐛🐛PVVVVVVVVVV IS IN POOL");
+                        }else
+                        {
+                            SubscribeMessage unsubmsg = new SubscribeMessage();
+
+                            unsubmsg.setType("clear");
+
+                            List<String> pv = new ArrayList<>(List.of(pvObj.getPv()));
+                            unsubmsg.setPvs(pv);
+                            String jsonunsubmsg = this.mapper.writeValueAsString(unsubmsg);
+                            this.send(jsonunsubmsg);
+                        }
+
+
 
                         break;
                     default:
@@ -161,6 +187,19 @@ public class PVWS_Client extends WebSocketClient {
             }
         }
 
+    public static boolean containsPv(PV target) {
+        // Get all PV entries in the pool
+        Collection<RefCountMap.ReferencedEntry<PV>> entries = PVPool.getPVReferences();
+
+        // Check if any entry wraps the target PV
+        for (RefCountMap.ReferencedEntry<PV> entry : entries) {
+            if (entry.getEntry().equals(target)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
         private void mapMetadata(JsonNode node) throws JsonProcessingException {
 
             PvwsMetadata pvMeta = mapper.treeToValue(node, PvwsMetadata.class);
@@ -168,6 +207,15 @@ public class PVWS_Client extends WebSocketClient {
             if (pvMeta.getVtype() != null)
                 MetadataHandler.setData(pvMeta); // comment this line out to test missing
 
+        }
+
+        private boolean containsPv(Collection<RefCountMap.ReferencedEntry<PV>> entries, PV target) {
+            for (RefCountMap.ReferencedEntry<PV> entry : entries) {
+                if (entry.getEntry().equals(target)) {  // <-- use getEntry()
+                    return true;
+                }
+            }
+            return false;
         }
 
         private void updateSeverity(JsonNode node, PvwsData pvData)
