@@ -8,55 +8,66 @@ import org.java_websocket.WebSocket;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.framing.Framedata;
 import org.java_websocket.handshake.ServerHandshake;
+import org.phoebus.pv.PV;
 import org.phoebus.pv.PVPool;
 import org.phoebus.pv.pvws.PVWS_PV;
 import org.phoebus.pv.pvws.models.pv.PvwsData;
 import org.phoebus.pv.pvws.models.pv.PvwsMetadata;
+import org.phoebus.pv.pvws.models.temp.SubscribeMessage;
 import org.phoebus.pv.pvws.utils.pv.VArrDecoder;
 import org.phoebus.pv.pvws.utils.pv.toVType;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.logging.Logger;
+import java.util.logging.Level;
 
 import org.phoebus.pv.pvws.utils.pv.MetadataHandler;
 
 public class PVWS_Client extends WebSocketClient {
-
+    private static final Logger console = Logger.getLogger(PVWS_Client.class.getName());
         public final ObjectMapper mapper;
         private final CountDownLatch latch;
+
         /*
         private SubscriptionHandler subHandler;
         private HeartbeatHandler heartbeatHandler;
         private ReconnectHandler reconnectHandler;
         private MetadataHandler metadataHandler;
-
          */
+        private volatile boolean dropped = false; // detects disconnects
 
         public PVWS_Client(URI serverUri, CountDownLatch latch, ObjectMapper mapper) {
             super(serverUri);
             this.latch = latch;
             this.mapper = mapper;
+            // Java-WebSocket detect dead connections & fires onClose/onError is no pong is received
+            setConnectionLostTimeout(20); // 20 seconds
         }
 
         @Override
         public void onOpen(ServerHandshake handshakedata) {
             try {
-                System.out.println("Connected to server");
+                console.log(Level.INFO, "Connected to server");
                 latch.countDown();
                 //reconnectHandler.resetStatus();
                 //heartbeatHandler.start();
             } catch (Exception e) {
-                System.err.println("Exception in onOpen: " + e.getMessage());
-                e.printStackTrace();
-
+                console.log(Level.SEVERE, "Exception in onOpen: " + e.getMessage(), e);
             }
         }
+
 
         @Override
         public void onMessage(String message) {
 
-            System.out.println("📨👍👍 Received: " + message);
+
+            console.log(Level.INFO, "Received: " + message);
 
 
 
@@ -64,6 +75,7 @@ public class PVWS_Client extends WebSocketClient {
                 JsonNode node = mapper.readTree(message);
 
                 mapMetadata(node);
+
 
 
                 String type = node.get("type").asText();
@@ -100,24 +112,51 @@ public class PVWS_Client extends WebSocketClient {
 
                         mergeMetadata(pvObj);
 
+                        if(pvObj.getVtype() == null)
+                        {
+
+
+                            //SubscribeMessage unsub = new SubscribeMessage();
+                            //unsub.setType("clear");
+
+                            /*List<String> pvunsub = new ArrayList<>(List.of(pvObj.getPv()));
+                            unsub.setPvs(pvunsub);
+                            String jsonunsub = this.mapper.writeValueAsString(unsub);
+                            this.send(jsonunsub);*/
+
+                            SubscribeMessage msgsub = new SubscribeMessage();
+                            msgsub.setType("subscribe");
+
+                            List<String> pvsub = new ArrayList<>(List.of(pvObj.getPv()));
+                            msgsub.setPvs(pvsub);
+                            String jsonsub = this.mapper.writeValueAsString(msgsub);
+                            this.send(jsonsub);
+
+                            return;
+
+
+
+                        }
+
                         VType vVal = toVType.convert(pvObj);
 
                         String pvname = ("pvws://" + pvObj.getPv());
 
 
 
-                            PVPool.getPV(pvname).update(vVal);
+                        PV updatedPV = PVPool.getPV(pvname);
 
-
+                        updatedPV.update(vVal);
+                        PVPool.releasePV(updatedPV);
 
 
                         break;
                     default:
-                        System.out.println("⚠️ 😤Unknown message type: " + type);
+                        console.log(Level.WARNING, "Unknown message type: " + type);
 
                 }
             } catch (Exception e) {
-                System.err.println("Error parsing or processing message: " + e.getMessage());
+                console.log(Level.SEVERE,"Error parsing or processing message: " + e.getMessage());
                 e.printStackTrace();
             }
         }
@@ -149,7 +188,12 @@ public class PVWS_Client extends WebSocketClient {
 
         @Override
         public void onClose(int code, String reason, boolean remote) {
-            System.out.println("❌ Disconnected. Reason: " + reason);
+            // Mark as dropped for anything that's not a normal, local close
+            // 1000 = normal closure. If remote==true or code!=1000 treat as drop.
+            if (remote || code != 1000) {
+                dropped = true;
+            }
+            console.log(Level.WARNING, "Disconnected. code=" + code + " remote=" + remote + " reason=" + reason);
             /* TODO: HEARTBEAT AND RECONN HANDLER
              heartbeatHandler.stop();
 
@@ -161,14 +205,21 @@ public class PVWS_Client extends WebSocketClient {
 
         @Override
         public void onError(Exception ex) {
-            System.err.println("🚨 WebSocket Error: " + ex.getMessage());
+            dropped = true;
+            console.log(Level.SEVERE, "WebSocket Error: " + ex.getMessage());
+
+        }
+        //allow callers to check if the last close was a drop
+        public boolean wasDropped() {
+            return dropped;
+        }
             /* TODO: HEARTBEAT AND RECONN HANDLER
             heartbeatHandler.stop();
             attemptReconnect();
 
              */
             //this.close();
-        }
+
 
 
         public void closeClient() {
@@ -212,13 +263,13 @@ public class PVWS_Client extends WebSocketClient {
         /* TODO: NEEDS HEARTBEAT HANDLER AND IDEALLY REFACTOR THESE 2 INTO THE HEARTBEAT CLASS
         @Override
         public void onWebsocketPing(WebSocket conn, Framedata f) {
-            System.out.println("Received Ping frame");
+            console.log(Level.INFO, "Received Ping frame");
             super.onWebsocketPing(conn, f);
         }
 
         @Override
         public void onWebsocketPong(WebSocket conn, Framedata f) {
-            System.out.println("Received Pong frame"); // you could also comment this out to test the heartbeat timeout just for visual clarity
+            console.log(Level.INFO, "Received Pong frame"); // you could also comment this out to test the heartbeat timeout just for visual clarity
             super.onWebsocketPong(conn, f);
 
            heartbeatHandler.setLastPongTime(System.currentTimeMillis());
