@@ -15,7 +15,8 @@ public class ReconnectHandler {
     }
 
     public void attemptReconnect() {
-        if (reconnecting.compareAndSet(false, true)) {
+        if (reconnecting.compareAndSet(false, true))
+        {
             Runnable reconnectTask = new Runnable() {
                 @Override
                 public void run() {
@@ -44,6 +45,10 @@ public class ReconnectHandler {
             };
 
             scheduler.execute(reconnectTask); // Try immediately
+        }
+        else
+        {
+            System.out.println("Reconnect already in progress.");
         }
     }
 

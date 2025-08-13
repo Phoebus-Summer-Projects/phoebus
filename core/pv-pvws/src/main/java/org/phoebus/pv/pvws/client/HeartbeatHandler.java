@@ -30,17 +30,23 @@ public class HeartbeatHandler {
 
 
 
-    public void start(){
+    public void start()
+    {
+        // Initializing lastpongtime so to avoid a false reconnect
+        lastPongTime = System.currentTimeMillis();
 
 
-        heartbeatTask = scheduler.scheduleAtFixedRate(() -> {
+        heartbeatTask = scheduler.scheduleAtFixedRate(() ->
+        {
             try {
                 //System.out.println(" Heartbeat loop running");
                 client.sendPing();
                 System.out.println("Ping sent");
                 scheduler.schedule(() -> {
-                    if (System.currentTimeMillis() - lastPongTime > getHeartbeatTimeout()) {
-                        System.out.println("Heartbeat timeout. Reconnecting...");
+                    long elapsed = System.currentTimeMillis() - lastPongTime;
+                    if (elapsed > heartbeatTimeout)
+                    {
+                        System.out.println("Heartbeat timeout.( " + elapsed +"ms ). Reconnecting...");
                         client.attemptReconnect();
                     }
                 }, 3, TimeUnit.SECONDS);
@@ -54,7 +60,8 @@ public class HeartbeatHandler {
 
     public void stop(){
 
-        if (heartbeatTask != null && !heartbeatTask.isCancelled()) {
+        if (heartbeatTask != null && !heartbeatTask.isCancelled())
+        {
             heartbeatTask.cancel(true);
         }
 
@@ -67,11 +74,13 @@ public class HeartbeatHandler {
     }
 
 
-    public long getHeartbeatInterval() {
+    public long getHeartbeatInterval()
+    {
         return heartbeatInterval;
     }
 
-    public long getHeartbeatTimeout() {
+    public long getHeartbeatTimeout()
+    {
         return heartbeatTimeout;
     }
 

@@ -2,7 +2,9 @@ package org.phoebus.pv.pvws;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.phoebus.pv.pvws.client.HeartbeatHandler;
 import org.phoebus.pv.pvws.client.PVWS_Client;
+import org.phoebus.pv.pvws.client.ReconnectHandler;
 import org.phoebus.pv.pvws.models.temp.SubscribeMessage;
 
 import java.net.URI;
@@ -50,8 +52,21 @@ public class PVWS_Context {
         ObjectMapper mapper = new ObjectMapper();
         PVWS_Client client = new PVWS_Client(serverUri, latch, mapper);
 
+        // TODO: Initialize Reconnect and Heartbeat Handlers
+
+        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+
+        // Create the Handlers
+        ReconnectHandler reconnectHandler = new ReconnectHandler(client, scheduler);
+        HeartbeatHandler heartbeatHandler = new HeartbeatHandler(client, scheduler,500,10000);
+
+        // Set Handlers
+        client.setHeartbeatHandler(heartbeatHandler);
+        client.setReconnectHandler(reconnectHandler);
+
         client.connect();
-        latch.await();
+        Thread.sleep(1000);
+        latch.await();// makes sure for asychrnous and threading purposes
 
         return client;
     }
@@ -73,4 +88,6 @@ public class PVWS_Context {
         String json = getClient().mapper.writeValueAsString(message);
         getClient().send(json);
     }
+
+
 }
