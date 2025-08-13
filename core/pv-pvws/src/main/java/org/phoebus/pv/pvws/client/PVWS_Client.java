@@ -8,15 +8,21 @@ import org.java_websocket.WebSocket;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.framing.Framedata;
 import org.java_websocket.handshake.ServerHandshake;
+import org.phoebus.pv.PV;
 import org.phoebus.pv.PVPool;
 import org.phoebus.pv.pvws.PVWS_PV;
 import org.phoebus.pv.pvws.models.pv.PvwsData;
 import org.phoebus.pv.pvws.models.pv.PvwsMetadata;
+import org.phoebus.pv.pvws.models.temp.SubscribeMessage;
 import org.phoebus.pv.pvws.utils.pv.VArrDecoder;
 import org.phoebus.pv.pvws.utils.pv.toVType;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.logging.Logger;
 import java.util.logging.Level;
@@ -27,6 +33,7 @@ public class PVWS_Client extends WebSocketClient {
     private static final Logger console = Logger.getLogger(PVWS_Client.class.getName());
         public final ObjectMapper mapper;
         private final CountDownLatch latch;
+
         /*
         private SubscriptionHandler subHandler;
         private HeartbeatHandler heartbeatHandler;
@@ -59,6 +66,7 @@ public class PVWS_Client extends WebSocketClient {
         @Override
         public void onMessage(String message) {
 
+
             console.log(Level.INFO, "Received: " + message);
 
 
@@ -67,6 +75,7 @@ public class PVWS_Client extends WebSocketClient {
                 JsonNode node = mapper.readTree(message);
 
                 mapMetadata(node);
+
 
 
                 String type = node.get("type").asText();
@@ -103,15 +112,42 @@ public class PVWS_Client extends WebSocketClient {
 
                         mergeMetadata(pvObj);
 
+                        if(pvObj.getVtype() == null)
+                        {
+
+
+                            //SubscribeMessage unsub = new SubscribeMessage();
+                            //unsub.setType("clear");
+
+                            /*List<String> pvunsub = new ArrayList<>(List.of(pvObj.getPv()));
+                            unsub.setPvs(pvunsub);
+                            String jsonunsub = this.mapper.writeValueAsString(unsub);
+                            this.send(jsonunsub);*/
+
+                            SubscribeMessage msgsub = new SubscribeMessage();
+                            msgsub.setType("subscribe");
+
+                            List<String> pvsub = new ArrayList<>(List.of(pvObj.getPv()));
+                            msgsub.setPvs(pvsub);
+                            String jsonsub = this.mapper.writeValueAsString(msgsub);
+                            this.send(jsonsub);
+
+                            return;
+
+
+
+                        }
+
                         VType vVal = toVType.convert(pvObj);
 
                         String pvname = ("pvws://" + pvObj.getPv());
 
 
 
-                            PVPool.getPV(pvname).update(vVal);
+                        PV updatedPV = PVPool.getPV(pvname);
 
-
+                        updatedPV.update(vVal);
+                        PVPool.releasePV(updatedPV);
 
 
                         break;
@@ -171,6 +207,7 @@ public class PVWS_Client extends WebSocketClient {
         public void onError(Exception ex) {
             dropped = true;
             console.log(Level.SEVERE, "WebSocket Error: " + ex.getMessage());
+
         }
         //allow callers to check if the last close was a drop
         public boolean wasDropped() {
