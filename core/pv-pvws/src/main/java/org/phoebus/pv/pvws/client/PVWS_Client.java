@@ -63,24 +63,15 @@ public class PVWS_Client extends WebSocketClient {
 
         @Override
         public void onMessage(String message) {
-
             System.out.println("MESSAGE AQUIRED 💪💪💪💪💪💪💪💪💪: " + message);
-
             console.log(Level.INFO, "Received: " + message);
-
-
-
             try {
                 JsonNode node = mapper.readTree(message);
-
                 mapMetadata(node);
-
-
 
                 String type = node.get("type").asText();
                 switch (type) {
                     case "update":
-
                         PvwsData pvObj = mapper.treeToValue(node, PvwsData.class);
 
                         /* TODO: ADD REFETCH FUNCTIONALITY
@@ -89,61 +80,33 @@ public class PVWS_Client extends WebSocketClient {
                             final int MAX_SUBSCRIBE_ATTEMPTS = 5;
                             MetadataHandler.refetch(MAX_SUBSCRIBE_ATTEMPTS, pvObj, this);
                             return;
-
                         }*/
 
-
-                        if (pvObj.getPv().endsWith(".RTYP")) {
-                            return;
+                        if (pvObj.getPv().endsWith(".RTYP")) { //THIS MIGHT NOT NEED TO BE HERE?
+                            return; // i dont think we need .rtyp messages???
                         }
+
                         VArrDecoder.decodeArrValue(node, pvObj);
 
-
+                        //🔻🔻🔻🔻🔻 part of refetch meta data functionality
                         //subscribeAttempts.remove(pvObj.getPv()); // reset retry count if we got the meta data
 
-                        // TODO: NEEDS separate class to handle this specific severity data and probably status too
+                        // TODO: NEEDS separate class/map to handle this specific severity data
                         updateSeverity(node, pvObj);
-
-                        //merges class PV and json node of metadata together
-
-
-                        //toVType.convert(pvObj);
 
                         mergeMetadata(pvObj);
 
 
-                        //String vtypeattr = node.get("vtype").asText();
-                        // needs to check node.get("b64dbl") , "b64flt" ETC
+                        // First message is useless so it subscribes again to get real message.
                          if(node.get("value") == null
                             && node.get("b64flt") == null
                             && node.get("b64dbl") == null
                             && node.get("b64srt") == null
                             && node.get("b64byt") == null
                          )
-                        {
-
-
-                            //SubscribeMessage unsub = new SubscribeMessage();
-                            //unsub.setType("clear");
-
-                            /*List<String> pvunsub = new ArrayList<>(List.of(pvObj.getPv()));
-                            unsub.setPvs(pvunsub);
-                            String jsonunsub = this.mapper.writeValueAsString(unsub);
-                            this.send(jsonunsub);*/
-
-                            SubscribeMessage msgsub = new SubscribeMessage();
-                            msgsub.setType("subscribe");
-
-                            List<String> pvsub = new ArrayList<>(List.of(pvObj.getPv()));
-                            msgsub.setPvs(pvsub);
-                            String jsonsub = this.mapper.writeValueAsString(msgsub);
-                            this.send(jsonsub);
-                            //Thread.sleep(500);
-
+                         {
+                            sendSubscription("subscribe", pvObj.getPv());
                             return;
-
-
-
                         }
 
                         VType vVal = toVType.convert(pvObj);
@@ -151,29 +114,18 @@ public class PVWS_Client extends WebSocketClient {
                         String pvname = ("pvws://" + pvObj.getPv());
 
 
-
+                        //UNOPTIMAL 🤢🤢🤢
                         PV updatedPV = PVPool.getPV(pvname);
-
                         updatedPV.update(vVal);
                         PVPool.releasePV(updatedPV);
 
-                        System.out.println("pvws references 🔥🔥🔥🔥🔥🔥🔥: " + PVPool.getPVReferences());
+                        System.out.println("PV in PV pool🧐🎱🎱: " + PVPool.getPVReferences());
 
-                        if(containsPv(updatedPV))
+                        if(!containsPv(updatedPV)) // IF CURRENT PV UPDATE NOT IN PHOEBUS'S PVPOOL THEN UNSUBSCRIBE
                         {
-                            System.out.println("🐛🐛🐛PVVVVVVVVVV IS IN POOL");
-                        }else
-                        {
-                            SubscribeMessage unsubmsg = new SubscribeMessage();
-
-                            unsubmsg.setType("clear");
-
-                            List<String> pv = new ArrayList<>(List.of(pvObj.getPv()));
-                            unsubmsg.setPvs(pv);
-                            String jsonunsubmsg = this.mapper.writeValueAsString(unsubmsg);
-                            this.send(jsonunsubmsg);
+                            System.out.println("PV CURRENTLY NOT IN PHOEBUS😤😤 sending unsubscribe message for: " + pvObj.getPv());
+                            sendSubscription("clear", pvObj.getPv());
                         }
-
 
 
                         break;
@@ -209,14 +161,20 @@ public class PVWS_Client extends WebSocketClient {
 
         }
 
-        private boolean containsPv(Collection<RefCountMap.ReferencedEntry<PV>> entries, PV target) {
-            for (RefCountMap.ReferencedEntry<PV> entry : entries) {
-                if (entry.getEntry().equals(target)) {  // <-- use getEntry()
-                    return true;
-                }
-            }
-            return false;
+        private void sendSubscription(String type, String pv) throws JsonProcessingException {
+
+            SubscribeMessage msg = new SubscribeMessage();
+
+            msg.setType(type);
+            List<String> pvs = new ArrayList<>(List.of(pv));
+            msg.setPvs(pvs);
+            String json = this.mapper.writeValueAsString(msg);
+            this.send(json);
+
+
+
         }
+
 
         private void updateSeverity(JsonNode node, PvwsData pvData)
         {
