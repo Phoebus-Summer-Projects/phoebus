@@ -23,6 +23,8 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.logging.Logger;
 import java.util.logging.Level;
 
@@ -51,6 +53,7 @@ public class PVWS_Client extends WebSocketClient {
             setConnectionLostTimeout(20); // 20 seconds
         }
 
+
         @Override
         public void onOpen(ServerHandshake handshakedata) {
             try {
@@ -75,7 +78,7 @@ public class PVWS_Client extends WebSocketClient {
 
         @Override
         public void onMessage(String message) {
-            System.out.println("MESSAGE AQUIRED 💪💪💪💪💪💪💪💪💪: " + message);
+            System.out.println("MESSAGE ACQUIRED 💪💪💪💪💪💪💪💪💪: " + message);
             console.log(Level.INFO, "Received: " + message);
             try {
                 JsonNode node = mapper.readTree(message);
@@ -223,12 +226,15 @@ public class PVWS_Client extends WebSocketClient {
 
         @Override
         public void onError(Exception ex) {
+            // If there is an error
             dropped = true;
             console.log(Level.SEVERE, "WebSocket Error: " + ex.getMessage());
+            // Stops the heartbeat
             if(heartbeatHandler != null)
             {
                 heartbeatHandler.stop();
             }
+            // Calls the reconnect
             attemptReconnect();
 
         }

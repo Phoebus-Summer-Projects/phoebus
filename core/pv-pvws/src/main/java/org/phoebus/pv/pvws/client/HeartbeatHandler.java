@@ -58,6 +58,7 @@ public class HeartbeatHandler {
                     }
                 }, 3, TimeUnit.SECONDS);
             } catch (Exception e) {
+                // If there is no answer to the ping then reconnect is called
                 System.out.println("Heartbeat error: " + e.getMessage());
                 client.attemptReconnect();
             }

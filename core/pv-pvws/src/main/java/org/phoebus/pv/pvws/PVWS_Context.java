@@ -56,7 +56,7 @@ public class PVWS_Context {
     private PVWS_Client initializeClient(URI serverUri) throws URISyntaxException, InterruptedException, JsonProcessingException {
         CountDownLatch latch = new CountDownLatch(1);
         ObjectMapper mapper = new ObjectMapper();
-        PVWS_Client client = new PVWS_Client(serverUri, latch, mapper);
+        PVWS_Client client = new PVWS_Client(serverUri,latch, mapper);
         ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
 
         HeartbeatHandler heartbeatHandler = initializeHeartbeatHandler(client, scheduler);
@@ -65,8 +65,29 @@ public class PVWS_Context {
         ReconnectHandler reconnectHandler = initializeReconnectHandler(client, scheduler);
         client.setReconnectHandler(reconnectHandler);
 
-        client.connect();
-        latch.await();
+        Thread connectThread = new Thread(()->
+        {
+            boolean connected = false;
+            while (!connected) {
+                try{
+                    client.connectBlocking();
+                    connected = true;
+                }
+                catch (Exception e){
+                    System.out.println("Server not available, retrying in 5 seconds...");
+                    try{
+                        Thread.sleep(5000);
+                    }
+                    catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+
+            }
+        },"PVWS-Connect-Retry");
+        connectThread.setDaemon(true);
+        connectThread.start();
         return client;
     }
 

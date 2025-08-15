@@ -27,6 +27,7 @@ public class ReconnectHandler {
                         boolean success = client.reconnectBlocking();  // Blocks until connected or fails
                         if (client.isOpen()) {
                             System.out.println("Reconnected successfully.");
+                            //No longer reconnecting
                             reconnecting.set(false);
 
                             // Start heartbeat again
