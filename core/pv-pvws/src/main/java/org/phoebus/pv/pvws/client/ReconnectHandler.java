@@ -1,5 +1,7 @@
 package org.phoebus.pv.pvws.client;
 
+import org.phoebus.pv.pvws.PVWS_Context;
+
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -26,6 +28,15 @@ public class ReconnectHandler {
                         if (client.isOpen()) {
                             System.out.println("Reconnected successfully.");
                             reconnecting.set(false);
+
+                            // Start heartbeat again
+                            if (client.getHeartbeatHandler() !=null)
+                            {
+                                client.getHeartbeatHandler().start();
+                            }
+
+                            // Re-subscribe
+                            PVWS_Context.getInstance().restoreSubscriptions();
                         } else {
                             throw new IllegalStateException("Connection not open after reconnect attempt.");
                         }

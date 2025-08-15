@@ -11,6 +11,7 @@ import org.java_websocket.handshake.ServerHandshake;
 import org.phoebus.pv.PV;
 import org.phoebus.pv.PVPool;
 import org.phoebus.pv.RefCountMap;
+import org.phoebus.pv.pvws.PVWS_Context;
 import org.phoebus.pv.pvws.PVWS_PV;
 import org.phoebus.pv.pvws.models.pv.PvwsData;
 import org.phoebus.pv.pvws.models.pv.PvwsMetadata;
@@ -34,10 +35,12 @@ public class PVWS_Client extends WebSocketClient {
 
         /*
         private SubscriptionHandler subHandler;
-        private HeartbeatHandler heartbeatHandler;
-        private ReconnectHandler reconnectHandler;
         private MetadataHandler metadataHandler;
          */
+
+        private HeartbeatHandler heartbeatHandler;
+        private ReconnectHandler reconnectHandler;
+
         private volatile boolean dropped = false; // detects disconnects
 
         public PVWS_Client(URI serverUri, CountDownLatch latch, ObjectMapper mapper) {
@@ -52,9 +55,18 @@ public class PVWS_Client extends WebSocketClient {
         public void onOpen(ServerHandshake handshakedata) {
             try {
                 console.log(Level.INFO, "Connected to server");
-                latch.countDown();
-                //reconnectHandler.resetStatus();
-                //heartbeatHandler.start();
+               if (!reconnectHandler.isReconnecting())
+               {
+                   latch.countDown();
+               }
+               // Reset Dropped Flag
+               dropped = false;
+               reconnectHandler.resetStatus();
+               // Start Heartbeat
+               heartbeatHandler.start();
+
+               // Re add the subscriptions
+                PVWS_Context.getInstance().restoreSubscriptions();
             } catch (Exception e) {
                 console.log(Level.SEVERE, "Exception in onOpen: " + e.getMessage(), e);
             }
@@ -200,19 +212,24 @@ public class PVWS_Client extends WebSocketClient {
                 dropped = true;
             }
             console.log(Level.WARNING, "Disconnected. code=" + code + " remote=" + remote + " reason=" + reason);
-            /* TODO: HEARTBEAT AND RECONN HANDLER
-             heartbeatHandler.stop();
+            //TODO: HEARTBEAT AND RECONN HANDLER
+            if(heartbeatHandler != null)
+            {
+                heartbeatHandler.stop();
+            }
 
             attemptReconnect();
-
-             */
-            latch.countDown();
         }
 
         @Override
         public void onError(Exception ex) {
             dropped = true;
             console.log(Level.SEVERE, "WebSocket Error: " + ex.getMessage());
+            if(heartbeatHandler != null)
+            {
+                heartbeatHandler.stop();
+            }
+            attemptReconnect();
 
         }
         //allow callers to check if the last close was a drop
@@ -240,14 +257,6 @@ public class PVWS_Client extends WebSocketClient {
             this.subHandler = subHandler;
         }
 
-        public void setHeartbeatHandler(HeartbeatHandler heartbeatHandler) {
-            this.heartbeatHandler = heartbeatHandler;
-        }
-
-        public void setReconnectHandler(ReconnectHandler reconnectHandler) {
-            this.reconnectHandler = reconnectHandler;
-        }
-
         public void setMetadataHandler(MetadataHandler metadataHandler) {
             this.metadataHandler = metadataHandler;
         }
@@ -259,30 +268,48 @@ public class PVWS_Client extends WebSocketClient {
         public void unSubscribeClient(String[] pvs) throws JsonProcessingException {
             subHandler.unSubscribe(pvs);
         }
-
-        public void attemptReconnect() {
-            this.reconnectHandler.attemptReconnect();
-        }
         */
 
+    public void attemptReconnect() {
+        if (reconnectHandler != null) {
+            reconnectHandler.attemptReconnect();
+        } else {
+            console.log(Level.WARNING, "ReconnectHandler is not set. Cannot reconnect.");
+        }
+    }
 
-        /* TODO: NEEDS HEARTBEAT HANDLER AND IDEALLY REFACTOR THESE 2 INTO THE HEARTBEAT CLASS
-        @Override
+
+    public void setHeartbeatHandler(HeartbeatHandler heartbeatHandler) {
+            this.heartbeatHandler = heartbeatHandler;
+        }
+
+        public void setReconnectHandler(ReconnectHandler reconnectHandler) {
+            this.reconnectHandler = reconnectHandler;
+        }
+
+        public HeartbeatHandler getHeartbeatHandler() {
+            return heartbeatHandler;
+        }
+
+        public ReconnectHandler getReconnectHandler() {
+            return reconnectHandler;
+        }
+
+
+        // TODO: NEEDS HEARTBEAT HANDLER AND IDEALLY REFACTOR THESE 2 INTO THE HEARTBEAT CLASS
+        /*@Override
         public void onWebsocketPing(WebSocket conn, Framedata f) {
             console.log(Level.INFO, "Received Ping frame");
             super.onWebsocketPing(conn, f);
         }
+        */
 
         @Override
         public void onWebsocketPong(WebSocket conn, Framedata f) {
             console.log(Level.INFO, "Received Pong frame"); // you could also comment this out to test the heartbeat timeout just for visual clarity
+            heartbeatHandler.setLastPongTime(System.currentTimeMillis());
             super.onWebsocketPong(conn, f);
-
-           heartbeatHandler.setLastPongTime(System.currentTimeMillis());
         }
-
-         */
-
 
     }
 

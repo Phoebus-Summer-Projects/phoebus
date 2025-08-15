@@ -3,6 +3,8 @@ package org.phoebus.pv.pvws;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.phoebus.pv.pvws.client.PVWS_Client;
+import org.phoebus.pv.pvws.client.HeartbeatHandler;
+import org.phoebus.pv.pvws.client.ReconnectHandler;
 import org.phoebus.pv.pvws.models.temp.SubscribeMessage;
 
 import java.net.URI;
@@ -55,9 +57,28 @@ public class PVWS_Context {
         CountDownLatch latch = new CountDownLatch(1);
         ObjectMapper mapper = new ObjectMapper();
         PVWS_Client client = new PVWS_Client(serverUri, latch, mapper);
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
+
+        HeartbeatHandler heartbeatHandler = initializeHeartbeatHandler(client, scheduler);
+        client.setHeartbeatHandler(heartbeatHandler);
+
+        ReconnectHandler reconnectHandler = initializeReconnectHandler(client, scheduler);
+        client.setReconnectHandler(reconnectHandler);
+
         client.connect();
         latch.await();
         return client;
+    }
+
+    // Initialize heartbeat and reconnect handlers
+    private static HeartbeatHandler initializeHeartbeatHandler(PVWS_Client client, ScheduledExecutorService scheduler) {
+        final long HEARTBEAT_INTERVAL = 10000;  // 10 sec
+        final long HEARTBEAT_TIMEOUT = 15000;   // 15 sec
+        return new HeartbeatHandler(client, scheduler, HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT);
+    }
+
+    private static ReconnectHandler initializeReconnectHandler(PVWS_Client client, ScheduledExecutorService scheduler) {
+        return new ReconnectHandler(client, scheduler);
     }
 
     public void clientSubscribe(String base_name) throws JsonProcessingException {
@@ -81,6 +102,19 @@ public class PVWS_Context {
         String json = getClient().mapper.writeValueAsString(message);
         getClient().send(json);
         subscriptions.removeAll(pvs);
+    }
+    // Called after reconnect to add back subscriptions
+    public void restoreSubscriptions() {
+        if (subscriptions.isEmpty()) return;
+        try {
+            SubscribeMessage message = new SubscribeMessage();
+            message.setType("subscribe");
+            message.setPvs(new ArrayList<>(subscriptions));
+            String json = client.mapper.writeValueAsString(message);
+            client.send(json);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     // Unsubscribed used during shutdown

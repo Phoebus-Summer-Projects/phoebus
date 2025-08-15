@@ -32,6 +32,13 @@ public class HeartbeatHandler {
 
     public void start()
     {
+
+        if (heartbeatTask != null && !heartbeatTask.isCancelled())
+        {
+            System.out.println("Heartbeat Task already running❤️, skipping start ...");
+            return;
+
+        }
         // Initializing lastpongtime so to avoid a false reconnect
         lastPongTime = System.currentTimeMillis();
 
@@ -60,9 +67,10 @@ public class HeartbeatHandler {
 
     public void stop(){
 
-        if (heartbeatTask != null && !heartbeatTask.isCancelled())
+        if (heartbeatTask != null)
         {
             heartbeatTask.cancel(true);
+            heartbeatTask = null;
         }
 
 
