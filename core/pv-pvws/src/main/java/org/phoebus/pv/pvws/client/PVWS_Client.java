@@ -3,13 +3,14 @@ package org.phoebus.pv.pvws.client;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-//import jdk.swing.interop.LightweightFrameWrapper;
 import org.epics.vtype.VType;
 import org.java_websocket.WebSocket;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.framing.Framedata;
 import org.java_websocket.handshake.ServerHandshake;
+import org.phoebus.pv.PV;
 import org.phoebus.pv.PVPool;
+import org.phoebus.pv.RefCountMap;
 import org.phoebus.pv.pvws.PVWS_PV;
 import org.phoebus.pv.pvws.models.pv.PvwsData;
 import org.phoebus.pv.pvws.models.pv.PvwsMetadata;
@@ -19,8 +20,7 @@ import org.phoebus.pv.pvws.utils.pv.toVType;
 
 import java.io.IOException;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.logging.Logger;
 import java.util.logging.Level;
@@ -31,157 +31,47 @@ public class PVWS_Client extends WebSocketClient {
     private static final Logger console = Logger.getLogger(PVWS_Client.class.getName());
         public final ObjectMapper mapper;
         private final CountDownLatch latch;
+
         /*
         private SubscriptionHandler subHandler;
-        private MetadataHandler metadataHandler;
-         */
-
         private HeartbeatHandler heartbeatHandler;
         private ReconnectHandler reconnectHandler;
+        private MetadataHandler metadataHandler;
+         */
+        private volatile boolean dropped = false; // detects disconnects
 
-
-        // List of PVS so that if the server disconnects then the Pvs are saved(Might change this bit of code into another class)
-        private List<String> subscribedPVs = new ArrayList<>();
-
-        public void subscribe(String pvName)
-        {
-            if(!subscribedPVs.contains(pvName))
-            {
-                subscribedPVs.add(pvName);
-            }
-            sendSubscribeMessage(List.of(pvName));
-        }
-
-        private void sendSubscribeMessage(List<String> pvs)
-        {
-            try
-            {
-                SubscribeMessage msg = new SubscribeMessage();
-                msg.setType("subscribe");
-                msg.setPvs(new ArrayList<>(pvs));
-                String json = mapper.writeValueAsString(msg);
-                console.log(Level.INFO,"[PVWS_Client] Sending subscribe message: " + json);
-                send(json);
-            }
-            catch(Exception e)
-            {
-                console.log(Level.SEVERE, "Failed to send subscribe message", e.getMessage());
-            }
-
-        }
-
-
-
-
-    public PVWS_Client(URI serverUri, CountDownLatch latch, ObjectMapper mapper) {
+        public PVWS_Client(URI serverUri, CountDownLatch latch, ObjectMapper mapper) {
             super(serverUri);
             this.latch = latch;
             this.mapper = mapper;
+            // Java-WebSocket detect dead connections & fires onClose/onError is no pong is received
+            setConnectionLostTimeout(20); // 20 seconds
         }
 
         @Override
         public void onOpen(ServerHandshake handshakedata) {
-            //try {
+            try {
                 console.log(Level.INFO, "Connected to server");
-
-                // Adding reconnect and heartbeat on open
-                if(reconnectHandler != null)
-                {
-                    reconnectHandler.resetStatus();
-                    console.log(Level.INFO, "[PVWS_Client] ReconnectHandler status reset.");
-                }
-
-                if(heartbeatHandler != null)
-                {
-                    heartbeatHandler.start();
-                    console.log(Level.INFO, "[PVWS_Client] Heartbeat started.");
-                }
-
-                // Resubscribes after reconnect
-            if (heartbeatHandler != null) {
-                heartbeatHandler.start();
-                console.log(Level.INFO, "[PVWS_Client] Heartbeat started.");
-            }
-
-            if (!subscribedPVs.isEmpty()) {
-                console.log(Level.INFO, "[PVWS_Client] Resubscribing to PVs after reconnect: " + subscribedPVs);
-
-                try {
-                    // 1. Send batch unsubscribe
-                    sendUnsubscribeMessageBatch(subscribedPVs);
-
-                    // 2. Wait briefly for server to process unsubscribes
-                    Thread.sleep(200);  // adjust if needed for your server
-
-                    // 3. Send batch subscribe to force updates
-                    sendSubscribeMessage(subscribedPVs);
-
-                } catch (InterruptedException e) {
-                    console.log(Level.WARNING, "Interrupted during resubscribe: " + e.getMessage());
-                    Thread.currentThread().interrupt(); // restore interrupt status
-                } catch (Exception e) {
-                    console.log(Level.SEVERE, "Unexpected error during resubscribe: " + e.getMessage());
-                }
-            }
-
-
-            latch.countDown();
-
-
-           /*}
-            catch (Exception e)
-            {
+                latch.countDown();
+                //reconnectHandler.resetStatus();
+                //heartbeatHandler.start();
+            } catch (Exception e) {
                 console.log(Level.SEVERE, "Exception in onOpen: " + e.getMessage(), e);
             }
-
-            */
         }
 
 
-    private void sendUnsubscribeMessageBatch(List<String> pvs) {
-        try {
-            SubscribeMessage msg = new SubscribeMessage();
-            msg.setType("unsubscribe");
-            msg.setPvs(new ArrayList<>(pvs));
-            String json = mapper.writeValueAsString(msg);
-            console.log(Level.INFO, "[PVWS_Client] Sending batch unsubscribe message: " + json);
-            send(json);
-        } catch (Exception e) {
-            console.log(Level.SEVERE, "Failed to send batch unsubscribe message", e);
-        }
-    }
-
-
-    private void sendUnsubscribeMessage(String pvName) {
-        try {
-            SubscribeMessage msg = new SubscribeMessage();
-            msg.setType("unsubscribe");
-            msg.setPvs(List.of(pvName));
-            String json = mapper.writeValueAsString(msg);
-            console.log(Level.INFO, "[PVWS_Client] Sending unsubscribe message: " + json);
-            send(json);
-        } catch (Exception e) {
-            console.log(Level.SEVERE, "Failed to send unsubscribe message", e);
-        }
-    }
-
-
-
-    @Override
+        @Override
         public void onMessage(String message) {
-
+            System.out.println("MESSAGE AQUIRED 💪💪💪💪💪💪💪💪💪: " + message);
             console.log(Level.INFO, "Received: " + message);
-
             try {
                 JsonNode node = mapper.readTree(message);
-
                 mapMetadata(node);
-
 
                 String type = node.get("type").asText();
                 switch (type) {
                     case "update":
-
                         PvwsData pvObj = mapper.treeToValue(node, PvwsData.class);
 
                         /* TODO: ADD REFETCH FUNCTIONALITY
@@ -190,37 +80,52 @@ public class PVWS_Client extends WebSocketClient {
                             final int MAX_SUBSCRIBE_ATTEMPTS = 5;
                             MetadataHandler.refetch(MAX_SUBSCRIBE_ATTEMPTS, pvObj, this);
                             return;
-
                         }*/
 
-
-                        if (pvObj.getPv().endsWith(".RTYP")) {
-                            return;
+                        if (pvObj.getPv().endsWith(".RTYP")) { //THIS MIGHT NOT NEED TO BE HERE?
+                            return; // i dont think we need .rtyp messages???
                         }
+
                         VArrDecoder.decodeArrValue(node, pvObj);
 
-
+                        //🔻🔻🔻🔻🔻 part of refetch meta data functionality
                         //subscribeAttempts.remove(pvObj.getPv()); // reset retry count if we got the meta data
 
-                        // TODO: NEEDS separate class to handle this specific severity data and probably status too
+                        // TODO: NEEDS separate class/map to handle this specific severity data
                         updateSeverity(node, pvObj);
 
-                        //merges class PV and json node of metadata together
-
-
-                        //toVType.convert(pvObj);
-
                         mergeMetadata(pvObj);
+
+
+                        // First message is useless so it subscribes again to get real message.
+                         if(node.get("value") == null
+                            && node.get("b64flt") == null
+                            && node.get("b64dbl") == null
+                            && node.get("b64srt") == null
+                            && node.get("b64byt") == null
+                         )
+                         {
+                            sendSubscription("subscribe", pvObj.getPv());
+                            return;
+                        }
 
                         VType vVal = toVType.convert(pvObj);
 
                         String pvname = ("pvws://" + pvObj.getPv());
 
 
+                        //UNOPTIMAL 🤢🤢🤢
+                        PV updatedPV = PVPool.getPV(pvname);
+                        updatedPV.update(vVal);
+                        PVPool.releasePV(updatedPV);
 
-                            PVPool.getPV(pvname).update(vVal);
+                        System.out.println("PV in PV pool🧐🎱🎱: " + PVPool.getPVReferences());
 
-
+                        if(!containsPv(updatedPV)) // IF CURRENT PV UPDATE NOT IN PHOEBUS'S PVPOOL THEN UNSUBSCRIBE
+                        {
+                            System.out.println("PV CURRENTLY NOT IN PHOEBUS😤😤 sending unsubscribe message for: " + pvObj.getPv());
+                            sendSubscription("clear", pvObj.getPv());
+                        }
 
 
                         break;
@@ -234,6 +139,19 @@ public class PVWS_Client extends WebSocketClient {
             }
         }
 
+    public static boolean containsPv(PV target) {
+        // Get all PV entries in the pool
+        Collection<RefCountMap.ReferencedEntry<PV>> entries = PVPool.getPVReferences();
+
+        // Check if any entry wraps the target PV
+        for (RefCountMap.ReferencedEntry<PV> entry : entries) {
+            if (entry.getEntry().equals(target)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
         private void mapMetadata(JsonNode node) throws JsonProcessingException {
 
             PvwsMetadata pvMeta = mapper.treeToValue(node, PvwsMetadata.class);
@@ -242,6 +160,21 @@ public class PVWS_Client extends WebSocketClient {
                 MetadataHandler.setData(pvMeta); // comment this line out to test missing
 
         }
+
+        private void sendSubscription(String type, String pv) throws JsonProcessingException {
+
+            SubscribeMessage msg = new SubscribeMessage();
+
+            msg.setType(type);
+            List<String> pvs = new ArrayList<>(List.of(pv));
+            msg.setPvs(pvs);
+            String json = this.mapper.writeValueAsString(msg);
+            this.send(json);
+
+
+
+        }
+
 
         private void updateSeverity(JsonNode node, PvwsData pvData)
         {
@@ -261,38 +194,38 @@ public class PVWS_Client extends WebSocketClient {
 
         @Override
         public void onClose(int code, String reason, boolean remote) {
-            console.log(Level.WARNING, "Disconnected. Reason: " + reason);
-            // Ensuring heartbeat stops and reconnect is called
-
-            if(heartbeatHandler != null)
-            {
-                heartbeatHandler.stop();
+            // Mark as dropped for anything that's not a normal, local close
+            // 1000 = normal closure. If remote==true or code!=1000 treat as drop.
+            if (remote || code != 1000) {
+                dropped = true;
             }
+            console.log(Level.WARNING, "Disconnected. code=" + code + " remote=" + remote + " reason=" + reason);
+            /* TODO: HEARTBEAT AND RECONN HANDLER
+             heartbeatHandler.stop();
 
-            if(reconnectHandler != null)
-            {
-                reconnectHandler.attemptReconnect();
-            }
+            attemptReconnect();
 
+             */
             latch.countDown();
         }
 
         @Override
         public void onError(Exception ex) {
-            console.log(Level.SEVERE,"WebSocket Error: " + ex.getMessage());
-            // If disconnected stop heartbeat and call reconnect
-
-            if(heartbeatHandler != null)
-            {
-                heartbeatHandler.stop();
-            }
-
-            if(reconnectHandler != null)
-            {
-                reconnectHandler.attemptReconnect();
-            }
+            dropped = true;
+            console.log(Level.SEVERE, "WebSocket Error: " + ex.getMessage());
 
         }
+        //allow callers to check if the last close was a drop
+        public boolean wasDropped() {
+            return dropped;
+        }
+            /* TODO: HEARTBEAT AND RECONN HANDLER
+            heartbeatHandler.stop();
+            attemptReconnect();
+
+             */
+            //this.close();
+
 
 
         public void closeClient() {
@@ -307,6 +240,14 @@ public class PVWS_Client extends WebSocketClient {
             this.subHandler = subHandler;
         }
 
+        public void setHeartbeatHandler(HeartbeatHandler heartbeatHandler) {
+            this.heartbeatHandler = heartbeatHandler;
+        }
+
+        public void setReconnectHandler(ReconnectHandler reconnectHandler) {
+            this.reconnectHandler = reconnectHandler;
+        }
+
         public void setMetadataHandler(MetadataHandler metadataHandler) {
             this.metadataHandler = metadataHandler;
         }
@@ -319,19 +260,10 @@ public class PVWS_Client extends WebSocketClient {
             subHandler.unSubscribe(pvs);
         }
 
-         */
-
         public void attemptReconnect() {
             this.reconnectHandler.attemptReconnect();
         }
-
-        public void setHeartbeatHandler(HeartbeatHandler heartbeatHandler) {
-        this.heartbeatHandler = heartbeatHandler;
-        }
-
-        public void setReconnectHandler(ReconnectHandler reconnectHandler) {
-        this.reconnectHandler = reconnectHandler;
-        }
+        */
 
 
         /* TODO: NEEDS HEARTBEAT HANDLER AND IDEALLY REFACTOR THESE 2 INTO THE HEARTBEAT CLASS
@@ -340,37 +272,18 @@ public class PVWS_Client extends WebSocketClient {
             console.log(Level.INFO, "Received Ping frame");
             super.onWebsocketPing(conn, f);
         }
-         */
 
         @Override
-        public void onWebsocketPong(WebSocket conn, Framedata f)
-        {
+        public void onWebsocketPong(WebSocket conn, Framedata f) {
             console.log(Level.INFO, "Received Pong frame"); // you could also comment this out to test the heartbeat timeout just for visual clarity
             super.onWebsocketPong(conn, f);
 
-           if(heartbeatHandler != null)
-           {
-               heartbeatHandler.setLastPongTime(System.currentTimeMillis());
-           }
+           heartbeatHandler.setLastPongTime(System.currentTimeMillis());
         }
 
-        // Send Ping Method
-        public void sendPing()
-        {
-            try
-            {
-                super.sendPing();
-            }
-            catch(Exception e)
-            {
-                console.log(Level.WARNING,"Failed to send ping: " + e.getMessage(),e);
-            }
-        }
-
+         */
 
 
     }
-
-
 
 

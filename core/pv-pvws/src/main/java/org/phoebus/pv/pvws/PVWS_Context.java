@@ -2,9 +2,7 @@ package org.phoebus.pv.pvws;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.phoebus.pv.pvws.client.HeartbeatHandler;
 import org.phoebus.pv.pvws.client.PVWS_Client;
-import org.phoebus.pv.pvws.client.ReconnectHandler;
 import org.phoebus.pv.pvws.models.temp.SubscribeMessage;
 
 import java.net.URI;
@@ -14,6 +12,8 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.Set;
+import java.util.concurrent.ConcurrentSkipListSet;
 
 public class PVWS_Context {
 
@@ -22,11 +22,15 @@ public class PVWS_Context {
 
     private final PVWS_Client client;
 
+    //Track active subscriptions
+    private final Set<String> subscriptions = new ConcurrentSkipListSet<>();
 
     private PVWS_Context() throws Exception {
         PVWS_Preferences.getInstance().installPreferences();
         URI serverUri = new URI(System.getProperty("PVWS_ADDRESS"));
         this.client = initializeClient(serverUri);
+        // Auto-unsubscribe if Phoebus exits
+        installShutdownHook();
     }
 
     // Thread-safe singleton getter with lazy initialization
@@ -51,31 +55,9 @@ public class PVWS_Context {
         CountDownLatch latch = new CountDownLatch(1);
         ObjectMapper mapper = new ObjectMapper();
         PVWS_Client client = new PVWS_Client(serverUri, latch, mapper);
-
-        // TODO: Initialize Reconnect and Heartbeat Handlers
-
-        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-
-        // Create the Handlers
-        ReconnectHandler reconnectHandler = new ReconnectHandler(client, scheduler);
-        HeartbeatHandler heartbeatHandler = new HeartbeatHandler(client, scheduler,500,10000);
-
-        // Set Handlers
-        client.setHeartbeatHandler(heartbeatHandler);
-        client.setReconnectHandler(reconnectHandler);
-
         client.connect();
-        Thread.sleep(1000);
-        latch.await();// makes sure for asychrnous and threading purposes
-
+        latch.await();
         return client;
-    }
-
-    // Shutdown method (optional)
-    public void shutdown() {
-        if (client != null) {
-            client.close();
-        }
     }
 
     public void clientSubscribe(String base_name) throws JsonProcessingException {
@@ -87,7 +69,52 @@ public class PVWS_Context {
         message.setPvs(pv);
         String json = getClient().mapper.writeValueAsString(message);
         getClient().send(json);
+
+        subscriptions.addAll(pv); //remember subscription
+    }
+    // helper for targeted unsubscribe
+    public void clientUnsubscribe(List<String> pvs) throws JsonProcessingException {
+        if (pvs == null || pvs.isEmpty()) return;
+        SubscribeMessage message = new SubscribeMessage();
+        message.setType("clear");
+        message.setPvs(pvs);
+        String json = getClient().mapper.writeValueAsString(message);
+        getClient().send(json);
+        subscriptions.removeAll(pvs);
     }
 
+    // Unsubscribed used during shutdown
+    private void unsubscribeAllQuietly() {
+        try {
+            if (!subscriptions.isEmpty() && client != null && client.isOpen()) {
+                SubscribeMessage message = new SubscribeMessage();
+                message.setType("clear");
+                message.setPvs(new ArrayList<>(subscriptions));
+                String json = client.mapper.writeValueAsString(message);
+                client.send(json);
+            }
+        } catch (Exception ignore) {
+        } finally {
+            subscriptions.clear();
+        }
+    }
 
+    // Shutdown method (optional)
+    public void shutdown() {
+        if (client != null) {
+            client.closeClient();
+        }
+    }
+    //Shutdown hook to catch app exit
+    private void installShutdownHook() {
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                unsubscribeAllQuietly();
+                if (client != null && client.isOpen()) {
+                    client.closeClient();
+                }
+            } catch (Exception ignored) {
+            }
+        }, "pvws-auto-unsubscribe"));
+    }
 }
