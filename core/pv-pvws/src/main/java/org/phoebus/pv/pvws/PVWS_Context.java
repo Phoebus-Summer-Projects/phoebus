@@ -83,7 +83,6 @@ public class PVWS_Context {
                         return;
                     }
                 }
-
             }
         },"PVWS-Connect-Retry");
         connectThread.setDaemon(true);

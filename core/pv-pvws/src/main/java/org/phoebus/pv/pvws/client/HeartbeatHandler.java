@@ -10,10 +10,8 @@ public class HeartbeatHandler {
 
     private final PVWS_Client client;
     private ScheduledExecutorService scheduler;
-
     private ScheduledFuture<?> heartbeatTask;
     private volatile long lastPongTime;
-
     private final long heartbeatInterval;
     private final long heartbeatTimeout;
 
@@ -29,19 +27,15 @@ public class HeartbeatHandler {
     }
 
 
-
     public void start()
     {
-
         if (heartbeatTask != null && !heartbeatTask.isCancelled())
         {
             System.out.println("Heartbeat Task already running❤️, skipping start ...");
             return;
-
         }
         // Initializing lastpongtime so to avoid a false reconnect
         lastPongTime = System.currentTimeMillis();
-
 
         heartbeatTask = scheduler.scheduleAtFixedRate(() ->
         {
@@ -67,21 +61,17 @@ public class HeartbeatHandler {
     }
 
     public void stop(){
-
         if (heartbeatTask != null)
         {
             heartbeatTask.cancel(true);
             heartbeatTask = null;
         }
-
-
     }
 
     public void setLastPongTime(Long lastPongTime)
     {
         this.lastPongTime = lastPongTime;
     }
-
 
     public long getHeartbeatInterval()
     {

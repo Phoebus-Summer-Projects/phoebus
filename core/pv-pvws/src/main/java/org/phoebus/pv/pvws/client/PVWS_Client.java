@@ -12,7 +12,6 @@ import org.phoebus.pv.PV;
 import org.phoebus.pv.PVPool;
 import org.phoebus.pv.RefCountMap;
 import org.phoebus.pv.pvws.PVWS_Context;
-import org.phoebus.pv.pvws.PVWS_PV;
 import org.phoebus.pv.pvws.models.pv.PvwsData;
 import org.phoebus.pv.pvws.models.pv.PvwsMetadata;
 import org.phoebus.pv.pvws.models.temp.SubscribeMessage;
@@ -23,8 +22,6 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.logging.Logger;
 import java.util.logging.Level;
 
@@ -34,12 +31,6 @@ public class PVWS_Client extends WebSocketClient {
     private static final Logger console = Logger.getLogger(PVWS_Client.class.getName());
         public final ObjectMapper mapper;
         private final CountDownLatch latch;
-
-        /*
-        private SubscriptionHandler subHandler;
-        private MetadataHandler metadataHandler;
-         */
-
         private HeartbeatHandler heartbeatHandler;
         private ReconnectHandler reconnectHandler;
 
@@ -67,7 +58,6 @@ public class PVWS_Client extends WebSocketClient {
                reconnectHandler.resetStatus();
                // Start Heartbeat
                heartbeatHandler.start();
-
                // Re add the subscriptions
                 PVWS_Context.getInstance().restoreSubscriptions();
             } catch (Exception e) {
@@ -88,14 +78,6 @@ public class PVWS_Client extends WebSocketClient {
                 switch (type) {
                     case "update":
                         PvwsData pvObj = mapper.treeToValue(node, PvwsData.class);
-
-                        /* TODO: ADD REFETCH FUNCTIONALITY
-                        if (!MetadataHandler.pvMetaMap.containsKey(pvObj.getPv())) {
-
-                            final int MAX_SUBSCRIBE_ATTEMPTS = 5;
-                            MetadataHandler.refetch(MAX_SUBSCRIBE_ATTEMPTS, pvObj, this);
-                            return;
-                        }*/
 
                         if (pvObj.getPv().endsWith(".RTYP")) { //THIS MIGHT NOT NEED TO BE HERE?
                             return; // i dont think we need .rtyp messages???
@@ -129,7 +111,7 @@ public class PVWS_Client extends WebSocketClient {
                         String pvname = ("pvws://" + pvObj.getPv());
 
 
-                        //UNOPTIMAL 🤢🤢🤢
+                        // UNOPTIMAL 🤢🤢🤢 NEEDS FIXING
                         PV updatedPV = PVPool.getPV(pvname);
                         updatedPV.update(vVal);
                         PVPool.releasePV(updatedPV);
@@ -141,7 +123,6 @@ public class PVWS_Client extends WebSocketClient {
                             System.out.println("PV CURRENTLY NOT IN PHOEBUS😤😤 sending unsubscribe message for: " + pvObj.getPv());
                             sendSubscription("clear", pvObj.getPv());
                         }
-
 
                         break;
                     default:
@@ -179,17 +160,12 @@ public class PVWS_Client extends WebSocketClient {
         private void sendSubscription(String type, String pv) throws JsonProcessingException {
 
             SubscribeMessage msg = new SubscribeMessage();
-
             msg.setType(type);
             List<String> pvs = new ArrayList<>(List.of(pv));
             msg.setPvs(pvs);
             String json = this.mapper.writeValueAsString(msg);
             this.send(json);
-
-
-
         }
-
 
         private void updateSeverity(JsonNode node, PvwsData pvData)
         {
@@ -215,7 +191,6 @@ public class PVWS_Client extends WebSocketClient {
                 dropped = true;
             }
             console.log(Level.WARNING, "Disconnected. code=" + code + " remote=" + remote + " reason=" + reason);
-            //TODO: HEARTBEAT AND RECONN HANDLER
             if(heartbeatHandler != null)
             {
                 heartbeatHandler.stop();
@@ -239,6 +214,7 @@ public class PVWS_Client extends WebSocketClient {
 
         }
         //allow callers to check if the last close was a drop
+        // Not used might delete idk....
         public boolean wasDropped() {
             return dropped;
         }
@@ -255,27 +231,7 @@ public class PVWS_Client extends WebSocketClient {
             this.close();
         }
 
-
-
-
-        /* TODO: ADD HANDLERS
-        public void setSubscriptionHandler(SubscriptionHandler subHandler) {
-            this.subHandler = subHandler;
-        }
-
-        public void setMetadataHandler(MetadataHandler metadataHandler) {
-            this.metadataHandler = metadataHandler;
-        }
-
-        public void subscribeClient(String[] pvs) throws JsonProcessingException {
-            subHandler.subscribe(pvs);
-        }
-
-        public void unSubscribeClient(String[] pvs) throws JsonProcessingException {
-            subHandler.unSubscribe(pvs);
-        }
-        */
-
+    // Attempt reconnect method (might move into actual reconnect class)
     public void attemptReconnect() {
         if (reconnectHandler != null) {
             reconnectHandler.attemptReconnect();
@@ -299,16 +255,9 @@ public class PVWS_Client extends WebSocketClient {
 
         public ReconnectHandler getReconnectHandler() {
             return reconnectHandler;
-        }
+        } // Also not used might need to be removed
 
 
-        // TODO: NEEDS HEARTBEAT HANDLER AND IDEALLY REFACTOR THESE 2 INTO THE HEARTBEAT CLASS
-        /*@Override
-        public void onWebsocketPing(WebSocket conn, Framedata f) {
-            console.log(Level.INFO, "Received Ping frame");
-            super.onWebsocketPing(conn, f);
-        }
-        */
 
         @Override
         public void onWebsocketPong(WebSocket conn, Framedata f) {
