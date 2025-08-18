@@ -21,6 +21,7 @@ import org.phoebus.pv.pvws.utils.pv.toVType;
 import java.io.IOException;
 import java.net.URI;
 import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.logging.Logger;
 import java.util.logging.Level;
@@ -33,10 +34,21 @@ public class PVWS_Client extends WebSocketClient {
         private final CountDownLatch latch;
         private HeartbeatHandler heartbeatHandler;
         private ReconnectHandler reconnectHandler;
+        private final List<PVListener> listeners = new CopyOnWriteArrayList<>();
+
+        public void addPVListener(PVListener listener) {
+            listeners.add(listener);
+        }
+
+        public void removePVListener(PVListener listener) {
+            listeners.remove(listener);
+        }
 
         private volatile boolean dropped = false; // detects disconnects
 
-        public PVWS_Client(URI serverUri, CountDownLatch latch, ObjectMapper mapper) {
+
+
+    public PVWS_Client(URI serverUri, CountDownLatch latch, ObjectMapper mapper) {
             super(serverUri);
             this.latch = latch;
             this.mapper = mapper;
@@ -66,74 +78,70 @@ public class PVWS_Client extends WebSocketClient {
         }
 
 
-        @Override
-        public void onMessage(String message) {
-            System.out.println("MESSAGE ACQUIRED 💪💪💪💪💪💪💪💪💪: " + message);
-            console.log(Level.INFO, "Received: " + message);
-            try {
-                JsonNode node = mapper.readTree(message);
-                mapMetadata(node);
+    @Override
+    public void onMessage(String message) {
+        System.out.println("MESSAGE ACQUIRED 💪💪💪💪💪💪💪💪💪: " + message);
+        console.log(Level.INFO, "Received: " + message);
 
-                String type = node.get("type").asText();
-                switch (type) {
-                    case "update":
-                        PvwsData pvObj = mapper.treeToValue(node, PvwsData.class);
+        try {
+            JsonNode node = mapper.readTree(message);
+            mapMetadata(node);
 
-                        if (pvObj.getPv().endsWith(".RTYP")) { //THIS MIGHT NOT NEED TO BE HERE?
-                            return; // i dont think we need .rtyp messages???
-                        }
+            String type = node.get("type").asText();
+            switch (type) {
+                case "update":
+                    PvwsData pvObj = mapper.treeToValue(node, PvwsData.class);
 
-                        VArrDecoder.decodeArrValue(node, pvObj);
+                    // Ignore RTYP messages if not needed
+                    if (pvObj.getPv().endsWith(".RTYP")) {
+                        return;
+                    }
 
-                        //🔻🔻🔻🔻🔻 part of refetch meta data functionality
-                        //subscribeAttempts.remove(pvObj.getPv()); // reset retry count if we got the meta data
+                    VArrDecoder.decodeArrValue(node, pvObj);
 
-                        // TODO: NEEDS separate class/map to handle this specific severity data
-                        updateSeverity(node, pvObj);
+                    updateSeverity(node, pvObj);
+                    mergeMetadata(pvObj);
 
-                        mergeMetadata(pvObj);
-
-
-                        // First message is useless so it subscribes again to get real message.
-                         if(node.get("value") == null
+                    // First message may be incomplete -> re-subscribe
+                    if (node.get("value") == null
                             && node.get("b64flt") == null
                             && node.get("b64dbl") == null
                             && node.get("b64srt") == null
-                            && node.get("b64byt") == null
-                         )
-                         {
-                            sendSubscription("subscribe", pvObj.getPv());
-                            return;
-                        }
+                            && node.get("b64byt") == null) {
+                        sendSubscription("subscribe", pvObj.getPv());
+                        return;
+                    }
 
-                        VType vVal = toVType.convert(pvObj);
+                    // Convert incoming data to VType
+                    VType vVal = toVType.convert(pvObj);
+                    String pvName = "pvws://" + pvObj.getPv();
 
-                        String pvname = ("pvws://" + pvObj.getPv());
+                    // 🔹 Notify all listeners instead of directly touching PVPool
+                    for (PVListener listener : listeners) {
+                        listener.onPVUpdate(pvName, vVal);
+                    }
 
-
-                        // UNOPTIMAL 🤢🤢🤢 NEEDS FIXING
-                        PV updatedPV = PVPool.getPV(pvname);
-                        updatedPV.update(vVal);
-                        PVPool.releasePV(updatedPV);
-
-                        System.out.println("PV in PV pool🧐🎱🎱: " + PVPool.getPVReferences());
-
-                        if(!containsPv(updatedPV)) // IF CURRENT PV UPDATE NOT IN PHOEBUS'S PVPOOL THEN UNSUBSCRIBE
-                        {
+                    // 🔹 For containsPv check, we still need a PV object
+                    PV pv = PVPool.getPV(pvName);
+                    try {
+                        if (!containsPv(pv)) {
                             System.out.println("PV CURRENTLY NOT IN PHOEBUS😤😤 sending unsubscribe message for: " + pvObj.getPv());
                             sendSubscription("clear", pvObj.getPv());
                         }
+                    } finally {
+                        PVPool.releasePV(pv); // always release to avoid leaks
+                    }
 
-                        break;
-                    default:
-                        console.log(Level.WARNING, "Unknown message type: " + type);
+                    break;
 
-                }
-            } catch (Exception e) {
-                console.log(Level.SEVERE,"Error parsing or processing message: " + e.getMessage());
-                e.printStackTrace();
+                default:
+                    console.log(Level.WARNING, "Unknown message type: " + type);
             }
+        } catch (Exception e) {
+            console.log(Level.SEVERE, "Error parsing or processing message: " + e.getMessage());
+            e.printStackTrace();
         }
+    }
 
     public static boolean containsPv(PV target) {
         // Get all PV entries in the pool

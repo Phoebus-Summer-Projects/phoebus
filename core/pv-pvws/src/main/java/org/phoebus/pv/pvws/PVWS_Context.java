@@ -123,6 +123,7 @@ public class PVWS_Context {
         getClient().send(json);
         subscriptions.removeAll(pvs);
     }
+
     // Called after reconnect to add back subscriptions
     public void restoreSubscriptions() {
         if (subscriptions.isEmpty()) return;
