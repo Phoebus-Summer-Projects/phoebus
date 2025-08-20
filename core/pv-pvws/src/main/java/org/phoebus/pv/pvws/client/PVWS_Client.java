@@ -36,6 +36,7 @@ public class PVWS_Client extends WebSocketClient {
         private ReconnectHandler reconnectHandler;
         private final List<PVListener> listeners = new CopyOnWriteArrayList<>();
 
+
         public void addPVListener(PVListener listener) {
             listeners.add(listener);
         }
@@ -54,6 +55,19 @@ public class PVWS_Client extends WebSocketClient {
             this.mapper = mapper;
             // Java-WebSocket detect dead connections & fires onClose/onError is no pong is received
             setConnectionLostTimeout(20); // 20 seconds
+
+            addPVListener((pvName, value) -> {
+                try {
+                    PV pv = PVPool.getPV(pvName);
+                    try {
+                        pv.update(value);
+                    } finally {
+                        PVPool.releasePV(pv);
+                    }
+                } catch (Exception ex) {
+                    ex.printStackTrace(); // or use Logger
+                }
+            });
         }
 
 
