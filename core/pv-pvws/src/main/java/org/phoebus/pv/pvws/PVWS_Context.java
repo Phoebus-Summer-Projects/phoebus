@@ -2,18 +2,15 @@ package org.phoebus.pv.pvws;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.reactivex.rxjava3.disposables.Disposable;
+import org.phoebus.pv.PV;
 import org.phoebus.pv.pvws.client.PVWS_Client;
 import org.phoebus.pv.pvws.models.temp.SubscribeMessage;
 
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.Set;
-import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.*;
+import java.util.concurrent.*;
 
 public class PVWS_Context {
 
@@ -24,6 +21,10 @@ public class PVWS_Context {
 
     //Track active subscriptions
     private final Set<String> subscriptions = new ConcurrentSkipListSet<>();
+
+    public static Map<String, PVWS_PV> contextMap = new ConcurrentHashMap<>();
+
+
 
     private PVWS_Context() throws Exception {
         PVWS_Preferences.getInstance().installPreferences();
