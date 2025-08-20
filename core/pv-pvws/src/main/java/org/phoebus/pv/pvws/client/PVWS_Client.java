@@ -11,6 +11,7 @@ import org.java_websocket.handshake.ServerHandshake;
 import org.phoebus.pv.PV;
 import org.phoebus.pv.PVPool;
 import org.phoebus.pv.RefCountMap;
+import org.phoebus.pv.pvws.PVWS_Context;
 import org.phoebus.pv.pvws.PVWS_PV;
 import org.phoebus.pv.pvws.models.pv.PvwsData;
 import org.phoebus.pv.pvws.models.pv.PvwsMetadata;
@@ -115,17 +116,29 @@ public class PVWS_Client extends WebSocketClient {
 
 
                         //UNOPTIMAL 🤢🤢🤢
-                        PV updatedPV = PVPool.getPV(pvname);
-                        updatedPV.update(vVal);
-                        PVPool.releasePV(updatedPV);
+                        //PV updatedPV = PVPool.getPV(pvname);
+                        //updatedPV.update(vVal);
+                        //PVPool.releasePV(updatedPV);
 
-                        System.out.println("PV in PV pool🧐🎱🎱: " + PVPool.getPVReferences());
+                         /*if(!containsPv(updatedPV)) // IF CURRENT PV UPDATE NOT IN PHOEBUS'S PVPOOL THEN UNSUBSCRIBE
+                        {
+                            System.out.println("PV CURRENTLY NOT IN PHOEBUS😤😤 sending unsubscribe message for: " + pvObj.getPv());
+                            sendSubscription("clear", pvObj.getPv());
+                        }*/
 
-                        if(!containsPv(updatedPV)) // IF CURRENT PV UPDATE NOT IN PHOEBUS'S PVPOOL THEN UNSUBSCRIBE
+                        if(PVWS_Context.contextMap.get(pvObj.getPv()) == null || !containsPv(PVWS_Context.contextMap.get(pvObj.getPv()))) // IF CURRENT PV UPDATE NOT IN PHOEBUS'S PVPOOL THEN UNSUBSCRIBE
                         {
                             System.out.println("PV CURRENTLY NOT IN PHOEBUS😤😤 sending unsubscribe message for: " + pvObj.getPv());
                             sendSubscription("clear", pvObj.getPv());
                         }
+
+                        PVWS_Context.contextMap.get(pvObj.getPv()).updatePV(vVal);
+
+
+
+                        System.out.println("PV in PV pool🧐🎱🎱: " + PVPool.getPVReferences());
+
+
 
 
                         break;
