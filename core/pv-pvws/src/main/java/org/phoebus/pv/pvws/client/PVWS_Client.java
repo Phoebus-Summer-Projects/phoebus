@@ -130,6 +130,7 @@ public class PVWS_Client extends WebSocketClient {
                         {
                             System.out.println("PV CURRENTLY NOT IN PHOEBUS😤😤 sending unsubscribe message for: " + pvObj.getPv());
                             sendSubscription("clear", pvObj.getPv());
+                            PVWS_Context.contextMap.get(pvObj.getPv()).disconnectPV();
                         }
 
                         PVWS_Context.contextMap.get(pvObj.getPv()).updatePV(vVal);

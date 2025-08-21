@@ -49,6 +49,10 @@ public class PVWS_PV extends PV {
         notifyListenersOfValue(vval);
     }
 
+    public void disconnectPV() {
+        this.notifyListenersOfDisconnect();
+    }
+
 
 }
 
