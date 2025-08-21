@@ -30,50 +30,59 @@ import org.phoebus.pv.pvws.utils.pv.MetadataHandler;
 
 public class PVWS_Client extends WebSocketClient {
     private static final Logger console = Logger.getLogger(PVWS_Client.class.getName());
-        public final ObjectMapper mapper;
-        private final CountDownLatch latch;
+    public final ObjectMapper mapper;
+    private final CountDownLatch latch;
 
-        /*
-        private SubscriptionHandler subHandler;
-        private HeartbeatHandler heartbeatHandler;
-        private ReconnectHandler reconnectHandler;
-        private MetadataHandler metadataHandler;
-         */
-        private volatile boolean dropped = false; // detects disconnects
+    /*
+    private SubscriptionHandler subHandler;
+    private HeartbeatHandler heartbeatHandler;
+    private ReconnectHandler reconnectHandler;
+    private MetadataHandler metadataHandler;
+     */
+    private volatile boolean dropped = false; // detects disconnects
 
-        public PVWS_Client(URI serverUri, CountDownLatch latch, ObjectMapper mapper) {
-            super(serverUri);
-            this.latch = latch;
-            this.mapper = mapper;
-            // Java-WebSocket detect dead connections & fires onClose/onError is no pong is received
-            setConnectionLostTimeout(20); // 20 seconds
+    public PVWS_Client(URI serverUri, CountDownLatch latch, ObjectMapper mapper) {
+        super(serverUri);
+        this.latch = latch;
+        this.mapper = mapper;
+        // Java-WebSocket detect dead connections & fires onClose/onError is no pong is received
+        setConnectionLostTimeout(20); // 20 seconds
+    }
+
+    @Override
+    public void onOpen(ServerHandshake handshakedata) {
+        try {
+            console.log(Level.INFO, "Connected to server");
+            latch.countDown();
+            //reconnectHandler.resetStatus();
+            //heartbeatHandler.start();
+        } catch (Exception e) {
+            console.log(Level.SEVERE, "Exception in onOpen: " + e.getMessage(), e);
         }
-
-        @Override
-        public void onOpen(ServerHandshake handshakedata) {
-            try {
-                console.log(Level.INFO, "Connected to server");
-                latch.countDown();
-                //reconnectHandler.resetStatus();
-                //heartbeatHandler.start();
-            } catch (Exception e) {
-                console.log(Level.SEVERE, "Exception in onOpen: " + e.getMessage(), e);
-            }
-        }
+    }
 
 
-        @Override
-        public void onMessage(String message) {
-            System.out.println("MESSAGE AQUIRED 💪💪💪💪💪💪💪💪💪: " + message);
-            console.log(Level.INFO, "Received: " + message);
-            try {
-                JsonNode node = mapper.readTree(message);
-                mapMetadata(node);
+    @Override
+    public void onMessage(String message) {
+        console.log(Level.INFO, "Received: " + message);
 
-                String type = node.get("type").asText();
-                switch (type) {
-                    case "update":
-                        PvwsData pvObj = mapper.treeToValue(node, PvwsData.class);
+        try {
+            JsonNode node = mapper.readTree(message);
+            mapMetadata(node);
+
+
+            String type = node.get("type").asText();
+            switch (type) {
+                case "update":
+                    PvwsData pvObj = mapper.treeToValue(node, PvwsData.class);
+
+                    // First message does not contain useful data, so resubscribe is needed.
+                    if (isAckMessage(node)) // first message may be for ACK/NACK but im unsure.
+                    {
+                        sendSubscription("subscribe", pvObj.getPv());
+                        return;
+                    }
+
 
                         /* TODO: ADD REFETCH FUNCTIONALITY
                         if (!MetadataHandler.pvMetaMap.containsKey(pvObj.getPv())) {
@@ -82,76 +91,36 @@ public class PVWS_Client extends WebSocketClient {
                             MetadataHandler.refetch(MAX_SUBSCRIBE_ATTEMPTS, pvObj, this);
                             return;
                         }*/
-
-                        if (pvObj.getPv().endsWith(".RTYP")) { //THIS MIGHT NOT NEED TO BE HERE?
-                            return; // i dont think we need .rtyp messages???
-                        }
-
-                        VArrDecoder.decodeArrValue(node, pvObj);
-
-                        //🔻🔻🔻🔻🔻 part of refetch meta data functionality
-                        //subscribeAttempts.remove(pvObj.getPv()); // reset retry count if we got the meta data
-
-                        // TODO: NEEDS separate class/map to handle this specific severity data
-                        updateSeverity(node, pvObj);
-
-                        mergeMetadata(pvObj);
+                    //subscribeAttempts.remove(pvObj.getPv()); // reset retry count if we got the meta data
 
 
-                        // First message is useless so it subscribes again to get real message.
-                         if(node.get("value") == null
-                            && node.get("b64flt") == null
-                            && node.get("b64dbl") == null
-                            && node.get("b64srt") == null
-                            && node.get("b64byt") == null
-                         )
-                         {
-                            sendSubscription("subscribe", pvObj.getPv());
-                            return;
-                        }
-
-                        VType vVal = toVType.convert(pvObj);
-
-                        String pvname = ("pvws://" + pvObj.getPv());
+                    if (pvObj.getPv().endsWith(".RTYP"))
+                        return; //these messages contain metadata that won't affect functionality.
 
 
-                        //UNOPTIMAL 🤢🤢🤢
-                        //PV updatedPV = PVPool.getPV(pvname);
-                        //updatedPV.update(vVal);
-                        //PVPool.releasePV(updatedPV);
-
-                         /*if(!containsPv(updatedPV)) // IF CURRENT PV UPDATE NOT IN PHOEBUS'S PVPOOL THEN UNSUBSCRIBE
-                        {
-                            System.out.println("PV CURRENTLY NOT IN PHOEBUS😤😤 sending unsubscribe message for: " + pvObj.getPv());
-                            sendSubscription("clear", pvObj.getPv());
-                        }*/
-
-                        if(PVWS_Context.contextMap.get(pvObj.getPv()) == null || !containsPv(PVWS_Context.contextMap.get(pvObj.getPv()))) // IF CURRENT PV UPDATE NOT IN PHOEBUS'S PVPOOL THEN UNSUBSCRIBE
-                        {
-                            System.out.println("PV CURRENTLY NOT IN PHOEBUS😤😤 sending unsubscribe message for: " + pvObj.getPv());
-                            sendSubscription("clear", pvObj.getPv());
-                            PVWS_Context.contextMap.get(pvObj.getPv()).disconnectPV();
-                        }
-
-                        PVWS_Context.contextMap.get(pvObj.getPv()).updatePV(vVal);
+                    VArrDecoder.decodeArrValue(node, pvObj);
 
 
+                    // TODO: NEEDS separate class/map to handle this specific severity data
+                    // Curently status is not sent so severity being in the same map is fine.
+                    updateSeverity(node, pvObj);
 
-                        System.out.println("PV in PV pool🧐🎱🎱: " + PVPool.getPVReferences());
+                    mergeMetadata(pvObj);
 
 
+                    VType vVal = toVType.convert(pvObj);
+                    applyUpdate(pvObj, vVal);
 
+                    break;
+                default:
+                    console.log(Level.WARNING, "Unknown message type: " + type);
 
-                        break;
-                    default:
-                        console.log(Level.WARNING, "Unknown message type: " + type);
-
-                }
-            } catch (Exception e) {
-                console.log(Level.SEVERE,"Error parsing or processing message: " + e.getMessage());
-                e.printStackTrace();
             }
+        } catch (Exception e) {
+            console.log(Level.SEVERE, "Error parsing or processing message: " + e.getMessage());
+            e.printStackTrace();
         }
+    }
 
     public static boolean containsPv(PV target) {
         // Get all PV entries in the pool
@@ -166,85 +135,104 @@ public class PVWS_Client extends WebSocketClient {
         return false;
     }
 
-        private void mapMetadata(JsonNode node) throws JsonProcessingException {
+    private void mapMetadata(JsonNode node) throws JsonProcessingException {
 
-            PvwsMetadata pvMeta = mapper.treeToValue(node, PvwsMetadata.class);
+        PvwsMetadata pvMeta = mapper.treeToValue(node, PvwsMetadata.class);
 
-            if (pvMeta.getVtype() != null)
-                MetadataHandler.setData(pvMeta); // comment this line out to test missing
+        if (pvMeta.getVtype() != null)
+            MetadataHandler.setData(pvMeta); // comment this line out to test missing
 
-        }
+    }
 
-        private void sendSubscription(String type, String pv) throws JsonProcessingException {
+    private void applyUpdate(PvwsData pvObj, VType vVal) throws JsonProcessingException {
 
-            SubscribeMessage msg = new SubscribeMessage();
-
-            msg.setType(type);
-            List<String> pvs = new ArrayList<>(List.of(pv));
-            msg.setPvs(pvs);
-            String json = this.mapper.writeValueAsString(msg);
-            this.send(json);
-
-
-
-        }
-
-
-        private void updateSeverity(JsonNode node, PvwsData pvData)
+        if (PVWS_Context.contextMap.get(pvObj.getPv()) == null || !containsPv(PVWS_Context.contextMap.get(pvObj.getPv()))) // IF CURRENT PV UPDATE NOT IN PHOEBUS'S PVPOOL THEN UNSUBSCRIBE
         {
-            if (node.has("severity"))// if severity changes set it in cached value
-            {
-                String currPV = pvData.getPv();
-                String currSeverity = pvData.getSeverity();
-                MetadataHandler.pvMetaMap.get(currPV).setSeverity(currSeverity);
-            }
+            sendSubscription("clear", pvObj.getPv());
+            PVWS_Context.contextMap.get(pvObj.getPv()).disconnectPV();
+        } else {
+            PVWS_Context.contextMap.get(pvObj.getPv()).updatePV(vVal);
         }
+    }
 
-        private void mergeMetadata(PvwsData pvData) throws IOException {
-            JsonNode nodeMerge = mapper.valueToTree(MetadataHandler.pvMetaMap.get(pvData.getPv()));
-            mapper.readerForUpdating(pvData).readValue(nodeMerge);
+    private void sendSubscription(String type, String pv) throws JsonProcessingException {
+
+        SubscribeMessage msg = new SubscribeMessage();
+
+        msg.setType(type);
+        List<String> pvs = new ArrayList<>(List.of(pv));
+        msg.setPvs(pvs);
+        String json = this.mapper.writeValueAsString(msg);
+        this.send(json);
+
+
+    }
+
+
+    private void updateSeverity(JsonNode node, PvwsData pvData) {
+        if (node.has("severity"))// if severity changes set it in cached value
+        {
+            String currPV = pvData.getPv();
+            String currSeverity = pvData.getSeverity();
+            MetadataHandler.pvMetaMap.get(currPV).setSeverity(currSeverity);
         }
+    }
+
+    private boolean isAckMessage(JsonNode node) {
+
+        return node.get("value") == null
+                && node.get("b64flt") == null
+                && node.get("b64dbl") == null
+                && node.get("b64srt") == null
+                && node.get("b64byt") == null;
+
+    }
+
+    private void mergeMetadata(PvwsData pvData) throws IOException {
+        JsonNode nodeMerge = mapper.valueToTree(MetadataHandler.pvMetaMap.get(pvData.getPv()));
+        mapper.readerForUpdating(pvData).readValue(nodeMerge);
+    }
 
 
-        @Override
-        public void onClose(int code, String reason, boolean remote) {
-            // Mark as dropped for anything that's not a normal, local close
-            // 1000 = normal closure. If remote==true or code!=1000 treat as drop.
-            if (remote || code != 1000) {
-                dropped = true;
-            }
-            console.log(Level.WARNING, "Disconnected. code=" + code + " remote=" + remote + " reason=" + reason);
+    @Override
+    public void onClose(int code, String reason, boolean remote) {
+        // Mark as dropped for anything that's not a normal, local close
+        // 1000 = normal closure. If remote==true or code!=1000 treat as drop.
+        if (remote || code != 1000) {
+            dropped = true;
+        }
+        console.log(Level.WARNING, "Disconnected. code=" + code + " remote=" + remote + " reason=" + reason);
             /* TODO: HEARTBEAT AND RECONN HANDLER
              heartbeatHandler.stop();
 
             attemptReconnect();
 
              */
-            latch.countDown();
-        }
+        latch.countDown();
+    }
 
-        @Override
-        public void onError(Exception ex) {
-            dropped = true;
-            console.log(Level.SEVERE, "WebSocket Error: " + ex.getMessage());
+    @Override
+    public void onError(Exception ex) {
+        dropped = true;
+        console.log(Level.SEVERE, "WebSocket Error: " + ex.getMessage());
 
-        }
-        //allow callers to check if the last close was a drop
-        public boolean wasDropped() {
-            return dropped;
-        }
+    }
+
+    //allow callers to check if the last close was a drop
+    public boolean wasDropped() {
+        return dropped;
+    }
             /* TODO: HEARTBEAT AND RECONN HANDLER
             heartbeatHandler.stop();
             attemptReconnect();
 
              */
-            //this.close();
+    //this.close();
 
 
-
-        public void closeClient() {
-            this.close();
-        }
+    public void closeClient() {
+        this.close();
+    }
 
 
 
@@ -298,6 +286,6 @@ public class PVWS_Client extends WebSocketClient {
          */
 
 
-    }
+}
 
 
