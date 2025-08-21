@@ -35,7 +35,6 @@ public class ReconnectHandler {
                             {
                                 client.getHeartbeatHandler().start();
                             }
-
                             // Re-subscribe
                             PVWS_Context.getInstance().restoreSubscriptions();
                         } else {

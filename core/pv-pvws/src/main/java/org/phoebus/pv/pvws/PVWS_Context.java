@@ -11,11 +11,9 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.Map;
+import java.util.concurrent.*;
 import java.util.Set;
-import java.util.concurrent.ConcurrentSkipListSet;
 
 public class PVWS_Context {
 
@@ -26,6 +24,8 @@ public class PVWS_Context {
 
     //Track active subscriptions
     private final Set<String> subscriptions = new ConcurrentSkipListSet<>();
+
+    public static Map<String, PVWS_PV> contextMap = new ConcurrentHashMap<>();
 
     private PVWS_Context() throws Exception {
         PVWS_Preferences.getInstance().installPreferences();
@@ -59,6 +59,7 @@ public class PVWS_Context {
         PVWS_Client client = new PVWS_Client(serverUri,latch, mapper);
         ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
 
+        // Initializing and Setting the heartbeat and reconnect  handlers
         HeartbeatHandler heartbeatHandler = initializeHeartbeatHandler(client, scheduler);
         client.setHeartbeatHandler(heartbeatHandler);
 

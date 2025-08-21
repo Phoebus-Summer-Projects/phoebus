@@ -65,7 +65,6 @@ public class PVWS_Client extends WebSocketClient {
             }
         }
 
-
         @Override
         public void onMessage(String message) {
             System.out.println("MESSAGE ACQUIRED 💪💪💪💪💪💪💪💪💪: " + message);
@@ -86,9 +85,6 @@ public class PVWS_Client extends WebSocketClient {
                         VArrDecoder.decodeArrValue(node, pvObj);
 
                         //🔻🔻🔻🔻🔻 part of refetch meta data functionality
-                        //subscribeAttempts.remove(pvObj.getPv()); // reset retry count if we got the meta data
-
-                        // TODO: NEEDS separate class/map to handle this specific severity data
                         updateSeverity(node, pvObj);
 
                         mergeMetadata(pvObj);
@@ -110,19 +106,15 @@ public class PVWS_Client extends WebSocketClient {
 
                         String pvname = ("pvws://" + pvObj.getPv());
 
-
-                        // UNOPTIMAL 🤢🤢🤢 NEEDS FIXING
-                        PV updatedPV = PVPool.getPV(pvname);
-                        updatedPV.update(vVal);
-                        PVPool.releasePV(updatedPV);
-
-                        System.out.println("PV in PV pool🧐🎱🎱: " + PVPool.getPVReferences());
-
-                        if(!containsPv(updatedPV)) // IF CURRENT PV UPDATE NOT IN PHOEBUS'S PVPOOL THEN UNSUBSCRIBE
+                        if(PVWS_Context.contextMap.get(pvObj.getPv()) == null || !containsPv(PVWS_Context.contextMap.get(pvObj.getPv()))) // IF CURRENT PV UPDATE NOT IN PHOEBUS'S PVPOOL THEN UNSUBSCRIBE
                         {
                             System.out.println("PV CURRENTLY NOT IN PHOEBUS😤😤 sending unsubscribe message for: " + pvObj.getPv());
                             sendSubscription("clear", pvObj.getPv());
                         }
+
+                        PVWS_Context.contextMap.get(pvObj.getPv()).updatePV(vVal);
+
+                        System.out.println("PV in PV pool🧐🎱🎱: " + PVPool.getPVReferences());
 
                         break;
                     default:
@@ -195,7 +187,6 @@ public class PVWS_Client extends WebSocketClient {
             {
                 heartbeatHandler.stop();
             }
-
             attemptReconnect();
         }
 
@@ -213,19 +204,6 @@ public class PVWS_Client extends WebSocketClient {
             attemptReconnect();
 
         }
-        //allow callers to check if the last close was a drop
-        // Not used might delete idk....
-        public boolean wasDropped() {
-            return dropped;
-        }
-            /* TODO: HEARTBEAT AND RECONN HANDLER
-            heartbeatHandler.stop();
-            attemptReconnect();
-
-             */
-            //this.close();
-
-
 
         public void closeClient() {
             this.close();
@@ -240,7 +218,6 @@ public class PVWS_Client extends WebSocketClient {
         }
     }
 
-
     public void setHeartbeatHandler(HeartbeatHandler heartbeatHandler) {
             this.heartbeatHandler = heartbeatHandler;
         }
@@ -252,12 +229,6 @@ public class PVWS_Client extends WebSocketClient {
         public HeartbeatHandler getHeartbeatHandler() {
             return heartbeatHandler;
         }
-
-        public ReconnectHandler getReconnectHandler() {
-            return reconnectHandler;
-        } // Also not used might need to be removed
-
-
 
         @Override
         public void onWebsocketPong(WebSocket conn, Framedata f) {
