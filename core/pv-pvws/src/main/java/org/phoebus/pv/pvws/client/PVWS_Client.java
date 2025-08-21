@@ -65,11 +65,9 @@ public class PVWS_Client extends WebSocketClient {
     @Override
     public void onMessage(String message) {
         console.log(Level.INFO, "Received: " + message);
-
         try {
             JsonNode node = mapper.readTree(message);
             mapMetadata(node);
-
 
             String type = node.get("type").asText();
             switch (type) {
@@ -83,7 +81,6 @@ public class PVWS_Client extends WebSocketClient {
                         return;
                     }
 
-
                         /* TODO: ADD REFETCH FUNCTIONALITY
                         if (!MetadataHandler.pvMetaMap.containsKey(pvObj.getPv())) {
 
@@ -93,20 +90,17 @@ public class PVWS_Client extends WebSocketClient {
                         }*/
                     //subscribeAttempts.remove(pvObj.getPv()); // reset retry count if we got the meta data
 
-
                     if (pvObj.getPv().endsWith(".RTYP"))
                         return; //these messages contain metadata that won't affect functionality.
 
 
                     VArrDecoder.decodeArrValue(node, pvObj);
 
-
                     // TODO: NEEDS separate class/map to handle this specific severity data
                     // Curently status is not sent so severity being in the same map is fine.
                     updateSeverity(node, pvObj);
 
                     mergeMetadata(pvObj);
-
 
                     VType vVal = toVType.convert(pvObj);
                     applyUpdate(pvObj, vVal);
@@ -122,7 +116,7 @@ public class PVWS_Client extends WebSocketClient {
         }
     }
 
-    public static boolean containsPv(PV target) {
+    private boolean containsPv(PV target) {
         // Get all PV entries in the pool
         Collection<RefCountMap.ReferencedEntry<PV>> entries = PVPool.getPVReferences();
 
