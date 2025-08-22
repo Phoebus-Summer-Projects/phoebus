@@ -5,10 +5,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.reactivex.rxjava3.disposables.Disposable;
 import org.phoebus.pv.PV;
 import org.phoebus.pv.pvws.client.PVWS_Client;
+import org.phoebus.pv.pvws.client.HeartbeatHandler;
+import org.phoebus.pv.pvws.client.ReconnectHandler;
 import org.phoebus.pv.pvws.models.temp.SubscribeMessage;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -23,8 +26,6 @@ public class PVWS_Context {
     private final Set<String> subscriptions = new ConcurrentSkipListSet<>();
 
     public static Map<String, PVWS_PV> contextMap = new ConcurrentHashMap<>();
-
-
 
     private PVWS_Context() throws Exception {
         PVWS_Preferences.getInstance().installPreferences();
@@ -55,10 +56,50 @@ public class PVWS_Context {
     private PVWS_Client initializeClient(URI serverUri) throws URISyntaxException, InterruptedException, JsonProcessingException {
         CountDownLatch latch = new CountDownLatch(1);
         ObjectMapper mapper = new ObjectMapper();
-        PVWS_Client client = new PVWS_Client(serverUri, latch, mapper);
-        client.connect();
-        latch.await();
+        PVWS_Client client = new PVWS_Client(serverUri,latch, mapper);
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
+
+        // Initializing and Setting the heartbeat and reconnect  handlers
+        HeartbeatHandler heartbeatHandler = initializeHeartbeatHandler(client, scheduler);
+        client.setHeartbeatHandler(heartbeatHandler);
+
+        ReconnectHandler reconnectHandler = initializeReconnectHandler(client, scheduler);
+        client.setReconnectHandler(reconnectHandler);
+
+        Thread connectThread = new Thread(()->
+        {
+            boolean connected = false;
+            while (!connected) {
+                try{
+                    client.connectBlocking();
+                    connected = true;
+                }
+                catch (Exception e){
+                    System.out.println("Server not available, retrying in 5 seconds...");
+                    try{
+                        Thread.sleep(5000);
+                    }
+                    catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+            }
+        },"PVWS-Connect-Retry");
+        connectThread.setDaemon(true);
+        connectThread.start();
         return client;
+    }
+
+    // Initialize heartbeat and reconnect handlers
+    private static HeartbeatHandler initializeHeartbeatHandler(PVWS_Client client, ScheduledExecutorService scheduler) {
+        final long HEARTBEAT_INTERVAL = 10000;  // 10 sec
+        final long HEARTBEAT_TIMEOUT = 15000;   // 15 sec
+        return new HeartbeatHandler(client, scheduler, HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT);
+    }
+
+    private static ReconnectHandler initializeReconnectHandler(PVWS_Client client, ScheduledExecutorService scheduler) {
+        return new ReconnectHandler(client, scheduler);
     }
 
     public void clientSubscribe(String base_name) throws JsonProcessingException {
@@ -82,6 +123,19 @@ public class PVWS_Context {
         String json = getClient().mapper.writeValueAsString(message);
         getClient().send(json);
         subscriptions.removeAll(pvs);
+    }
+    // Called after reconnect to add back subscriptions
+    public void restoreSubscriptions() {
+        if (subscriptions.isEmpty()) return;
+        try {
+            SubscribeMessage message = new SubscribeMessage();
+            message.setType("subscribe");
+            message.setPvs(new ArrayList<>(subscriptions));
+            String json = client.mapper.writeValueAsString(message);
+            client.send(json);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     // Unsubscribed used during shutdown
