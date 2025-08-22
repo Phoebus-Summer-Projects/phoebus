@@ -2,10 +2,9 @@ package org.phoebus.pv.pvws;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import io.reactivex.rxjava3.disposables.Disposable;
+
 import org.epics.vtype.VType;
 import org.phoebus.pv.PV;
-
-import java.net.URISyntaxException;
 
 public class PVWS_PV extends PV {
     /**
@@ -19,13 +18,14 @@ public class PVWS_PV extends PV {
         context.clientSubscribe(base_name);
         PVWS_Context.contextMap.put(base_name, this);
 
-// Later, when you no longer care about updates
-
-
     }
 
     public void updatePV(VType vval) {
         notifyListenersOfValue(vval);
+    }
+
+    public void disconnectPV() {
+        this.notifyListenersOfDisconnect();
     }
 
 }
