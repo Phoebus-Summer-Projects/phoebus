@@ -23,7 +23,7 @@ public class PVWS_Context {
     private final PVWS_Client client;
 
     //Track active subscriptions
-    private final Set<String> subscriptions = new ConcurrentSkipListSet<>();
+    public static final Set<String> subscriptions = new ConcurrentSkipListSet<>();
 
     public static Map<String, PVWS_PV> contextMap = new ConcurrentHashMap<>();
 
@@ -56,7 +56,7 @@ public class PVWS_Context {
     private PVWS_Client initializeClient(URI serverUri) throws URISyntaxException, InterruptedException, JsonProcessingException {
         CountDownLatch latch = new CountDownLatch(1);
         ObjectMapper mapper = new ObjectMapper();
-        PVWS_Client client = new PVWS_Client(serverUri,latch, mapper);
+        PVWS_Client client = new PVWS_Client(serverUri, mapper, latch);
         ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
 
         // Initializing and Setting the heartbeat and reconnect  handlers

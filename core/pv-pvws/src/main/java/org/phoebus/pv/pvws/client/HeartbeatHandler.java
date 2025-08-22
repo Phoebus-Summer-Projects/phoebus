@@ -5,6 +5,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 
 public class HeartbeatHandler {
 
@@ -31,7 +32,8 @@ public class HeartbeatHandler {
     {
         if (heartbeatTask != null && !heartbeatTask.isCancelled())
         {
-            System.out.println("Heartbeat Task already running❤️, skipping start ...");
+            PVWS_Client.console.log(Level.INFO, "HeartbeatHandler is already started");
+           // System.out.println("Heartbeat Task already running❤️, skipping start ...");
             return;
         }
         // Initializing lastpongtime so to avoid a false reconnect
